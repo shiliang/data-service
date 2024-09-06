@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package datasource;
+
+option go_package= "data-service/datasource";
+
+// 数据源服务，提供连接和数据读取功能
+service DataSourceService {
+  // 建立与数据源的连接
+  rpc ConnectToDataSource (ConnectionRequest) returns (ConnectionResponse);
+
+  // 读取数据
+  rpc ReadData (ReadRequest) returns (ReadResponse);
+
+  // 断开与数据源的连接
+  rpc DisconnectFromDataSource (DisconnectRequest) returns (DisconnectResponse);
+}
+
+
+// 连接请求，包含连接字符串等信息
+message ConnectionRequest {
+  string data_source_type = 1;  // 数据源类型（例如 MySQL、PostgreSQL、MongoDB）
+  string connection_string = 2; // 连接字符串（URL、用户名、密码等）
+}
+
+// 连接响应，返回连接成功与否的信息
+message ConnectionResponse {
+  bool success = 1;    // 是否成功连接
+  string message = 2;  // 错误或成功信息
+}
+
+// 数据读取请求，包含查询条件或读取参数
+message ReadRequest {
+  string query = 1;     // 查询语句或读取指令
+  string database = 2;  // 数据库名称
+  string table = 3;     // 表名
+}
+
+// 数据读取响应，返回读取到的数据
+message ReadResponse {
+  repeated DataRow data = 1;  // 返回的行数据
+}
+
+// 每行数据的定义
+message DataRow {
+  map<string, string> fields = 1;  // 字段名称和值
+}
+
+// 断开连接请求
+message DisconnectRequest {
+  string data_source_type = 1;  // 数据源类型
+}
+
+// 断开连接响应
+message DisconnectResponse {
+  bool success = 1;
+  string message = 2;
+}
