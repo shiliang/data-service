@@ -1,27 +1,32 @@
-package server
+package main
 
 import (
 	"context"
 	pb "data-service/proto/data-service/datasource"
-	"log"
+	"fmt"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"net"
 )
 
 type server struct {
 }
 
-func (s server) ConnectToDataSource(ctx context.Context, request *pb.ConnectionRequest) (*pb.ConnectionResponse, error) {
-	log.Printf("Connecting to data source: %s", request.GetDataSourceType())
-}
-
 func (s server) ReadData(ctx context.Context, request *pb.ReadRequest) (*pb.ReadResponse, error) {
-	//TODO implement me
-	panic("implement me")
-}
+	// 初始化k8s客户端
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Kubernetes config: %v", err)
+	}
 
-func (s server) DisconnectFromDataSource(ctx context.Context, request *pb.DisconnectRequest) (*pb.DisconnectResponse, error) {
-	//TODO implement me
-	panic("implement me")
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes client: %v", err)
+	}
+
+	// 创建 Spark Pod
+	pod := &corev1.Pod{}
 }
 
 func (s server) mustEmbedUnimplementedDataSourceServiceServer() {

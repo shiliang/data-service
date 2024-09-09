@@ -19,9 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DataSourceService_ConnectToDataSource_FullMethodName      = "/datasource.DataSourceService/ConnectToDataSource"
-	DataSourceService_ReadData_FullMethodName                 = "/datasource.DataSourceService/ReadData"
-	DataSourceService_DisconnectFromDataSource_FullMethodName = "/datasource.DataSourceService/DisconnectFromDataSource"
+	DataSourceService_ReadData_FullMethodName = "/datasource.DataSourceService/ReadData"
 )
 
 // DataSourceServiceClient is the client API for DataSourceService service.
@@ -30,12 +28,8 @@ const (
 //
 // 数据源服务，提供连接和数据读取功能
 type DataSourceServiceClient interface {
-	// 建立与数据源的连接
-	ConnectToDataSource(ctx context.Context, in *ConnectionRequest, opts ...grpc.CallOption) (*ConnectionResponse, error)
 	// 读取数据
-	ReadData(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error)
-	// 断开与数据源的连接
-	DisconnectFromDataSource(ctx context.Context, in *DisconnectRequest, opts ...grpc.CallOption) (*DisconnectResponse, error)
+	ReadData(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*Response, error)
 }
 
 type dataSourceServiceClient struct {
@@ -46,30 +40,10 @@ func NewDataSourceServiceClient(cc grpc.ClientConnInterface) DataSourceServiceCl
 	return &dataSourceServiceClient{cc}
 }
 
-func (c *dataSourceServiceClient) ConnectToDataSource(ctx context.Context, in *ConnectionRequest, opts ...grpc.CallOption) (*ConnectionResponse, error) {
+func (c *dataSourceServiceClient) ReadData(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*Response, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ConnectionResponse)
-	err := c.cc.Invoke(ctx, DataSourceService_ConnectToDataSource_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataSourceServiceClient) ReadData(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReadResponse)
+	out := new(Response)
 	err := c.cc.Invoke(ctx, DataSourceService_ReadData_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataSourceServiceClient) DisconnectFromDataSource(ctx context.Context, in *DisconnectRequest, opts ...grpc.CallOption) (*DisconnectResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DisconnectResponse)
-	err := c.cc.Invoke(ctx, DataSourceService_DisconnectFromDataSource_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,12 +56,8 @@ func (c *dataSourceServiceClient) DisconnectFromDataSource(ctx context.Context, 
 //
 // 数据源服务，提供连接和数据读取功能
 type DataSourceServiceServer interface {
-	// 建立与数据源的连接
-	ConnectToDataSource(context.Context, *ConnectionRequest) (*ConnectionResponse, error)
 	// 读取数据
-	ReadData(context.Context, *ReadRequest) (*ReadResponse, error)
-	// 断开与数据源的连接
-	DisconnectFromDataSource(context.Context, *DisconnectRequest) (*DisconnectResponse, error)
+	ReadData(context.Context, *ReadRequest) (*Response, error)
 	mustEmbedUnimplementedDataSourceServiceServer()
 }
 
@@ -98,14 +68,8 @@ type DataSourceServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedDataSourceServiceServer struct{}
 
-func (UnimplementedDataSourceServiceServer) ConnectToDataSource(context.Context, *ConnectionRequest) (*ConnectionResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ConnectToDataSource not implemented")
-}
-func (UnimplementedDataSourceServiceServer) ReadData(context.Context, *ReadRequest) (*ReadResponse, error) {
+func (UnimplementedDataSourceServiceServer) ReadData(context.Context, *ReadRequest) (*Response, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadData not implemented")
-}
-func (UnimplementedDataSourceServiceServer) DisconnectFromDataSource(context.Context, *DisconnectRequest) (*DisconnectResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DisconnectFromDataSource not implemented")
 }
 func (UnimplementedDataSourceServiceServer) mustEmbedUnimplementedDataSourceServiceServer() {}
 func (UnimplementedDataSourceServiceServer) testEmbeddedByValue()                           {}
@@ -128,24 +92,6 @@ func RegisterDataSourceServiceServer(s grpc.ServiceRegistrar, srv DataSourceServ
 	s.RegisterService(&DataSourceService_ServiceDesc, srv)
 }
 
-func _DataSourceService_ConnectToDataSource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ConnectionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataSourceServiceServer).ConnectToDataSource(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataSourceService_ConnectToDataSource_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataSourceServiceServer).ConnectToDataSource(ctx, req.(*ConnectionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _DataSourceService_ReadData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReadRequest)
 	if err := dec(in); err != nil {
@@ -164,24 +110,6 @@ func _DataSourceService_ReadData_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DataSourceService_DisconnectFromDataSource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DisconnectRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataSourceServiceServer).DisconnectFromDataSource(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataSourceService_DisconnectFromDataSource_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataSourceServiceServer).DisconnectFromDataSource(ctx, req.(*DisconnectRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // DataSourceService_ServiceDesc is the grpc.ServiceDesc for DataSourceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,16 +118,8 @@ var DataSourceService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*DataSourceServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ConnectToDataSource",
-			Handler:    _DataSourceService_ConnectToDataSource_Handler,
-		},
-		{
 			MethodName: "ReadData",
 			Handler:    _DataSourceService_ReadData_Handler,
-		},
-		{
-			MethodName: "DisconnectFromDataSource",
-			Handler:    _DataSourceService_DisconnectFromDataSource_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
