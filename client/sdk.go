@@ -1,6 +1,4 @@
 /*
-*
-
 	@author: shiliang
 	@date: 2024/9/6
 	@note: 客户端sdk，供外部服务使用
@@ -10,9 +8,11 @@
 package client
 
 import (
+	"bytes"
 	"context"
-	pb "data-service/proto/data-service/datasource"
+	pb "data-service/generated/datasource"
 	"fmt"
+	"github.com/apache/arrow/go/arrow/ipc"
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -27,14 +27,11 @@ type DataServiceClient struct {
 	conn   *grpc.ClientConn
 }
 
-/*
-*
-
-  - @Description 创建数据服务组件sdk实例
-
-  - @return DataServiceClient 数据服务客户端
-    *
-*/
+/***
+  * @Description 创建数据服务组件sdk实例
+  * @return DataServiceClient 数据服务客户端
+  *
+***/
 func NewDataServiceClient() *DataServiceClient {
 	// 创建data service客户端
 	return &DataServiceClient{}
@@ -42,13 +39,13 @@ func NewDataServiceClient() *DataServiceClient {
 
 // 服务调用 1.建立连接 2.读取数据 3.断开连接
 
-/**
+/***
  * @Description 客户端与服务器创建连接，并测试
  * @Param namespace 命名空间
  * @Param serviceName k8s服务名
  * @Param servicePort k8s端口
  * @return 连接信息，连接成功返回nil
- **/
+ ***/
 func (sdk *DataServiceClient) Connect(namespace string, serviceName string, servicePort string) (*pb.Response, error) {
 	var serverAddress string
 	if namespace == "" {
@@ -81,18 +78,18 @@ func (sdk *DataServiceClient) Connect(namespace string, serviceName string, serv
  * @Param
  * @return
  **/
-func (sdk *DataServiceClient) ReadData(ctx context.Context, request *pb.ReadRequest) *pb.Response {
+func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.BatchReadRequest) *pb.Response {
 	if sdk.client == nil {
 		return nil, fmt.Errorf("gRpc client not connected")
 	}
-
+	requestId := uuid.New().String()
 	// 调用服务端ReadData方法
-	err, _ := sdk.client.ReadData(ctx, request)
+	err, _ := sdk.client.ReadBatchData(ctx, request)
 	if err == nil {
 		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
-	requestId := uuid.New().String()
-	err := sdk.readMinioData(request.GetClientId(), requestId, request.GetMinioServer(), request.GetMinioPort(),
+
+	err, _ := sdk.readMinioData(request.GetClientId(), requestId, request.GetMinioServer(), request.GetMinioPort(),
 		request.GetMinioAK(), request.MinioAK)
 	if err != nil {
 		return &pb.Response{
@@ -103,6 +100,37 @@ func (sdk *DataServiceClient) ReadData(ctx context.Context, request *pb.ReadRequ
 	return &pb.Response{
 		Success: true,
 		Message: fmt.Sprintf("success to read data"),
+	}
+}
+
+func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb.StreamReadRequest) *pb.Response {
+	stream, err := sdk.client.ReadStreamingData(ctx, request)
+	if err != nil {
+		log.Fatalf("Error calling ReadStreamingData: %v", err)
+	}
+
+	// 逐批接收 Arrow 数据
+	for {
+		resp, err := stream.Recv()
+		if err != nil {
+			log.Fatalf("Error receiving stream: %v", err)
+		}
+		if err == io.EOF {
+			log.Println("All data received, closing stream.")
+			break
+		}
+
+		// 读取 Arrow 数据批次
+		buf := bytes.NewReader(resp.ArrowBatch)
+		reader, err := ipc.NewReader(buf)
+		if err != nil {
+			log.Fatalf("Error reading Arrow data: %v", err)
+		}
+
+		// 处理 Arrow 批次数据
+		record := reader.Record()
+
+		log.Printf("Received record: %v", record)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	pb "data-service/proto/data-service/datasource"
 	"fmt"
+	"google.golang.org/grpc"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -13,7 +14,7 @@ import (
 type server struct {
 }
 
-func (s server) ReadData(ctx context.Context, request *pb.ReadRequest) (*pb.ReadResponse, error) {
+func (s server) ReadBatchData(ctx context.Context, request *pb.BatchReadRequest) (*pb.Response, error) {
 	// 初始化k8s客户端
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -27,6 +28,11 @@ func (s server) ReadData(ctx context.Context, request *pb.ReadRequest) (*pb.Read
 
 	// 创建 Spark Pod
 	pod := &corev1.Pod{}
+}
+
+func (s server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerStreamingServer[pb.ArrowDataResponse]) error {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (s server) mustEmbedUnimplementedDataSourceServiceServer() {

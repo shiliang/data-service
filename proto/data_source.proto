@@ -2,12 +2,14 @@ syntax = "proto3";
 
 package datasource;
 
-option go_package= "data-service/datasource";
+option go_package= "./datasource";
 
 // 数据源服务，提供连接和数据读取功能
 service DataSourceService {
-  // 读取数据
-  rpc ReadData (ReadRequest) returns (Response);
+  // 批处理读取数据
+  rpc ReadBatchData (BatchReadRequest) returns (Response);
+  // 流式读取数据，使用流式响应来返回数据
+  rpc ReadStreamingData(StreamReadRequest) returns (stream ArrowDataResponse);
 }
 
 
@@ -17,14 +19,28 @@ message Response {
   string message = 2;  // 错误或成功信息
 }
 
-// 数据读取请求，包含查询条件或读取参数
-message ReadRequest {
+// 返回给客户端的Arrow格式数据
+message ArrowDataResponse {
+  bytes arrow_batch = 1;
+}
+
+// 批处理请求，包含查询条件或读取参数
+message BatchReadRequest {
   string clientId = 1; // 客户端id
   string minioServer = 2;
   string minioPort = 3;
   string minioAK = 4;
   string minioSK = 5;
   ConnectionInfo connection = 8; // 数据库连接信息
+  string requestId = 9;
+  FileType fileType = 10; // 客户端保存文件类型
+}
+
+// 流式任务请求
+message StreamReadRequest {
+  ConnectionInfo connection = 1;
+  string requestId = 2;
+  FileType fileType = 3; // 客户端保存文件类型
 }
 
 message ConnectionInfo {
@@ -34,5 +50,14 @@ message ConnectionInfo {
   string user = 4; // 数据库用户名
   string password = 5; // 数据库密码
   string query = 6; // 查询语句或读取指令
+}
+
+// 文件类型的枚举定义
+enum FileType {
+  FILE_TYPE_UNKNOWN = 0;  // 默认值，表示未知类型
+  FILE_TYPE_CSV = 1;      // CSV 文件
+  FILE_TYPE_JSON = 2;     // JSON 文件
+  FILE_TYPE_PARQUET = 3;  // Parquet 文件
+  FILE_TYPE_AVRO = 4;     // Avro 文件
 }
 

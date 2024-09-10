@@ -1,0 +1,247 @@
+syntax = "proto3";
+
+// 表示当前 proto 文件属于 protobuf 包，它不是 go 文件的 package
+// 主要用于导入外部 proto 文件
+package proto;
+
+option go_package = "./ida";
+
+
+message GetPrivateDBConnInfoReq{
+  string request_id = 1; // 请求ID
+  int32 db_conn_id = 2;   // 数据源连接id
+}
+
+message GetPrivateDBConnInfoResp{
+  int32 code = 1;
+  string msg = 2;
+  PrivateDBConnInfo data = 3;
+}
+
+message PrivateDBConnInfo{
+  int32 db_conn_id = 1;   // 数据源连接ID
+  string conn_name = 2;  // 数据源连接名称
+  string host = 3;      // 数据源地址
+  int32 port = 4;       // 端口号
+  int32 type = 5;       // 数据库类型： 1.mysql，2.Hive
+  string username = 6;  // 数据库用户名
+  string password = 7;  // 数据库密码
+  string db_name = 8;    // 数据库名称
+  string tls_cert = 9; // 证书
+  string created_at = 10; // 创建时间
+}
+
+message GetPrivateAssetInfoByEnNameReq{
+  string request_id = 1; // 请求ID
+  string asset_en_name = 2; // 资产英文名称
+  int32 chain_info_id = 3; // 链信息id
+}
+
+message StatusInfo{
+  int32 onChainStatus = 1;    // 上链状态：0未上链，1已上链，2上链失败
+  int32 certificationStatus = 2;  // 认证状态： 0待认证，1认证中，2认证完成
+  int32 Status = 3;    // 资产状态： 待定
+  int32 profStatus = 4;  // 合规认证状态：0 未认证，1认证中，2认证完成， 3 认证失败
+  int32 valuationStatus = 5;  // 价值评估认证状态：0 未认证，1认证中，2认证完成， 3 认证失败
+}
+
+
+message SaveAPIReq {
+  string request_id = 1;
+  int32 asset_id = 2; // 资产id
+  repeated APIInfo apis = 3; // API列表
+}
+
+// APIInfo 每一条API的信息
+message APIInfo{
+  string header = 1; // header
+  string url = 2; // API地址
+  string test_url = 3; // 测试API地址
+  string method = 5; // 请求方式： GET、POST等
+  string params = 6; // 入参
+  string response = 7; // 响应
+  string resp_type = 8; // 响应类型：默认json
+  string resp_example = 9; // 响应示例
+  string created_at = 10; // 创建时间
+  string updated_at = 11; // 最后更新时间
+}
+
+message GetPrivateAssetInfoByEnNameResp{
+  int32 code = 1;
+  string msg = 2;
+  AssetInfo data = 3;
+}
+
+message DBConnInfo{
+  int32 db_conn_id = 1;   // 数据源连接ID
+  string conn_name = 2;  // 数据源连接名称
+  string host = 3;      // 数据源地址
+  int32 port = 4;       // 端口号
+  int32 type = 5;       // 数据库类型： 1.mysql，2.Hive
+  string username = 6;  // 数据库用户名
+  string db_name = 7;    // 数据库名称
+  string tls_cert = 9; // TLS证书
+  string tls_cert_name = 10; // TLS文件名
+  string tls_cert_ext = 11; // TLS文件名扩展
+  string created_at = 12; // 创建时间
+  string creator = 13; // 创建人
+}
+
+
+message DataSetInfo {
+  string table_name = 1; // 表名
+  string table_desc = 2; // 表描述
+  DBConnInfo db_conn_info = 3; // 数据源连接信息
+  repeated SaveTableColumnItem items = 4; // 字段列表
+}
+
+message SaveTableColumnItem {
+  string name = 1; // 字段名称
+  string original_name = 2; // 原始字段名称
+  string data_type = 3; // 字段类型
+  int32 data_length = 4; // 字段类型
+  int32 is_primary_key = 5; // 是否为主键：1.是，0.否
+  int32 is_not_null = 6; // 是否为空：1.是，0.否
+  int32 privacy_query = 7; // 是否隐私查询：1是，0否 默认1
+  string description = 8; // 字段描述
+  string data_example = 9; // 数据示例
+  string custom_column = 10; // 个性化字段
+  int32 security_level = 11; // 分级分类:1 一级，2二级，3三级
+}
+
+message FileInfo {
+  int32 asset_id = 1; // 资产id
+  int32 type = 2; // 资产附件类型：1图片，2合规证明材料，3. 估值证明材料，4相关附件
+  string name = 3; // 文件名称
+  string file_url = 4; // 文件URL
+}
+
+message ChainItem {
+  string chain_id = 1; // 链id
+  string sub_chain_id = 2; // sub链id
+  string chain_name = 3;  // 链名称
+  string explorer_url = 4; // 区块浏览器地址
+  repeated UploadInfo upload_items = 5; //上链信息
+}
+
+message UploadInfo{
+  string tx_id = 1;  // 交易id
+  int32  visible_type = 2;  // 可见范围： 0 不公开，1部分公开，2全部公开
+  repeated int32 visible_platform = 3;  // 部分公开时，公开的的平台id
+  repeated string visible_platform_name = 4;  // 部分公开时，公开的的平台名称
+  string uploaded_at = 5; // 上链时间
+}
+
+message CertificationInfo {
+  string certificate_at = 1; // 认证时间
+  string enterprise_name = 2; // 认证机构名称
+  string enterprise_credit_code = 3; // 企业信用证代码
+  int32 enterprise_type = 4; // 认证类型：0 合规，1 资产评估
+  string enterprise_address = 5; // 链账户地址
+  int32 result = 6; // 认证结果： 1通过，2驳回
+  string tx_id = 7; // 交易id
+  string explains = 8; // 驳回原因
+  string expire_time = 9; // 认证到期日
+  repeated FileInfo file_info = 10; // 认证文件
+}
+
+message AssetInfo {
+  int32 asset_id = 1; // 资产编号
+  string creator = 2; // 创建者
+  string creatorName = 3; // 创建者名称
+  string created_at = 4; // 创建时间
+  string update_user = 5; // 最后修改者
+  string update_name = 6; // 最后修改者名称
+  string updated_at = 7; // 最后修改时间
+  string holder = 8; // 持有者链账户地址
+  string holder_company = 9; // 持有者公司名称
+  string holder_credit_code = 10; // 持有者公司信用代码
+  string holder_did = 11; // 持有者DID
+  ProductInfo product_info = 12; // 产品信息
+  repeated ChainItem chain_info = 13; // 上链信息
+  repeated CertificationInfo certification_info = 14; // 认证信息
+}
+
+message ProductInfo {
+  AssetBaseInfo product_base_info = 1; // 产品基础信息
+  AssetDataInfo product_data_info = 2; // 产品数据属性
+  DataSetInfo product_data_set = 3; // 数据集信息
+  SaveAPIReq product_api = 4; // 数据API信息
+  repeated FileInfo product_images = 5; // 资产图片
+  repeated FileInfo product_files = 6; // 产品附件
+  StatusInfo product_status = 7; // 状态信息
+}
+
+message AssetBaseInfo {
+  int32 asset_id = 1;  // 资产自增id
+  string asset_number = 2; // 资产编号
+  string asset_name = 3; // 资产名称
+  string asset_en_name = 4; // 资产英文简称
+  int32 asset_type = 5; // 资产类型
+  string asset_type_name =  6; // 资产类型名称
+  repeated string tags = 7; // 关键字
+  int32 industry_id = 8; // 行业id
+  string industry = 9; // 行业名称
+  string intro = 10; // 简介
+  repeated int32 user_category = 11; // 使用对象
+  repeated string user_category_name = 12; // 使用对象名称
+  int32 immediately_supply = 13; // 供应方式： 1即时供应，0延时供应
+  string delayed_supply_time = 14; // 延时供应时间
+  string suit_scenario = 15; // 适用场景
+  string disable_scenario = 16; // 禁用场景
+  int32 authorization = 17; // 是否精准授权：1是，2否
+  int32 visit_mode = 18;  // 接口访问模式： 1点对点模式，2适配器模式
+}
+
+message AssetDataInfo {
+  int32 source_type = 1; // 取得方式
+  string source_type_name = 2; // 取得方式名称
+  string source_way = 3; // 来源渠道
+  string desensitization_way = 4; // 脱敏方式
+  int32 scale_type = 5; // 数据规模类型:1条，2M，3G
+  string scale_type_name = 6; // 数据规模类型名称
+  int32 scale = 7; // 数据规模
+  int32 data_format = 8; // 存储格式
+  string data_format_name = 9; // 存储格式名称
+  int32 update_type = 10; // 更新周期类型：1静态，2实时，3周期
+  int32 cycle = 12; // 更新周期
+  int32 unit = 13; // 更新周期单位: 1分，2时，3天
+  string unit_name = 14; // 更新周期单位名称
+  string time_span = 15; // 时间跨度
+  string data_sample = 16; // 数据产品示例
+  string  custom_info = 17; // 个性化字段
+  string expire_time = 18; // 资产失效时间
+}
+
+enum AlgoType {
+  DEFAULT             = 0;
+  SM2                 = 1;
+  SM4                 = 2;
+  AES                 = 3;
+}
+
+message KeyEncryptRequest {
+  string plainText = 1;
+  AlgoType algoType= 2;
+  string pubKey = 3;
+  string extraParam = 4;
+}
+
+message KeyEncryptResponse {
+  // 业务返回码，0 表示执行成功，非 0 表示执行失败
+  int32 code = 1;
+
+  // 执行信息，主要是失败的报错提示信息
+  string msg = 2;
+
+  string cipherText = 3;
+}
+
+service MiraIdaAccess {
+  // 1. 获取包含隐私信息的数据源连接信息接口
+  rpc GetPrivateDBConnInfo(GetPrivateDBConnInfoReq) returns (GetPrivateDBConnInfoResp);
+  // 2. 通过资产英文名称获取资产详情
+  rpc GetPrivateAssetInfoByEnName(GetPrivateAssetInfoByEnNameReq) returns (GetPrivateAssetInfoByEnNameResp);
+  //加密接口
+  rpc Encrypt(KeyEncryptRequest) returns(KeyEncryptResponse);
+}
