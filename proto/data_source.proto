@@ -20,8 +20,7 @@ message Response {
 }
 
 message BatchResponse {
-  Response response = 1;
-  string ObjectUrl = 2; // 下载数据的url
+  string ObjectUrl = 1; // 下载数据的url
 }
 
 // 返回给客户端的Arrow格式数据，
@@ -37,6 +36,8 @@ message BatchReadRequest {
   int32 chainInfoId = 4;
   string filePath = 5; // 本地存储文件的路径
   FileType fileType = 6; // 客户端保存文件类型
+  repeated string dbFields = 7;  // 数据库字段名的字符串数组
+  ServerInfo serverInfo = 8; // 服务端连接信息
 }
 
 // 流式任务请求
@@ -44,6 +45,7 @@ message StreamReadRequest {
   ConnectionInfo connection = 1;
   string requestId = 2;
   FileType fileType = 3; // 客户端保存文件类型
+  string filePath = 4;
 }
 
 message ConnectionInfo {
@@ -56,6 +58,12 @@ message ConnectionInfo {
   string tls_cert_ext = 7; // TLS文件名扩展
 }
 
+message ServerInfo {
+  string namespace = 1;
+  string serviceName = 2;
+  string servicePort = 3;
+}
+
 // 文件类型的枚举定义
 enum FileType {
   FILE_TYPE_UNKNOWN = 0;  // 默认值，表示未知类型
@@ -63,5 +71,18 @@ enum FileType {
   FILE_TYPE_JSON = 2;     // JSON 文件
   FILE_TYPE_PARQUET = 3;  // Parquet 文件
   FILE_TYPE_AVRO = 4;     // Avro 文件
+}
+
+message MINIORequest {
+  string dataName = 1;
+  string requestId = 2;
+  string server = 3;
+  string port = 4;
+  string accessKeyID = 5;
+  string secretAccessKey = 6;
+  string bucketName = 7;
+  bool useSSL = 8;
+  string filePath = 9;
+  string contentType = 10; // 文件类型
 }
 

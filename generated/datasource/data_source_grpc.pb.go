@@ -30,7 +30,7 @@ const (
 // 数据源服务，提供连接和数据读取功能
 type DataSourceServiceClient interface {
 	// 批处理读取数据
-	ReadBatchData(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*Response, error)
+	ReadBatchData(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*BatchResponse, error)
 	// 流式读取数据，使用流式响应来返回数据
 	ReadStreamingData(ctx context.Context, in *StreamReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArrowDataResponse], error)
 }
@@ -43,9 +43,9 @@ func NewDataSourceServiceClient(cc grpc.ClientConnInterface) DataSourceServiceCl
 	return &dataSourceServiceClient{cc}
 }
 
-func (c *dataSourceServiceClient) ReadBatchData(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*Response, error) {
+func (c *dataSourceServiceClient) ReadBatchData(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*BatchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Response)
+	out := new(BatchResponse)
 	err := c.cc.Invoke(ctx, DataSourceService_ReadBatchData_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ type DataSourceService_ReadStreamingDataClient = grpc.ServerStreamingClient[Arro
 // 数据源服务，提供连接和数据读取功能
 type DataSourceServiceServer interface {
 	// 批处理读取数据
-	ReadBatchData(context.Context, *BatchReadRequest) (*Response, error)
+	ReadBatchData(context.Context, *BatchReadRequest) (*BatchResponse, error)
 	// 流式读取数据，使用流式响应来返回数据
 	ReadStreamingData(*StreamReadRequest, grpc.ServerStreamingServer[ArrowDataResponse]) error
 	mustEmbedUnimplementedDataSourceServiceServer()
@@ -92,7 +92,7 @@ type DataSourceServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedDataSourceServiceServer struct{}
 
-func (UnimplementedDataSourceServiceServer) ReadBatchData(context.Context, *BatchReadRequest) (*Response, error) {
+func (UnimplementedDataSourceServiceServer) ReadBatchData(context.Context, *BatchReadRequest) (*BatchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadBatchData not implemented")
 }
 func (UnimplementedDataSourceServiceServer) ReadStreamingData(*StreamReadRequest, grpc.ServerStreamingServer[ArrowDataResponse]) error {
