@@ -7,7 +7,7 @@ option go_package= "./datasource";
 // 数据源服务，提供连接和数据读取功能
 service DataSourceService {
   // 批处理读取数据
-  rpc ReadBatchData (BatchReadRequest) returns (Response);
+  rpc ReadBatchData (BatchReadRequest) returns (BatchResponse);
   // 流式读取数据，使用流式响应来返回数据
   rpc ReadStreamingData(StreamReadRequest) returns (stream ArrowDataResponse);
 }
@@ -19,7 +19,12 @@ message Response {
   string message = 2;  // 错误或成功信息
 }
 
-// 返回给客户端的Arrow格式数据
+message BatchResponse {
+  Response response = 1;
+  string ObjectUrl = 2; // 下载数据的url
+}
+
+// 返回给客户端的Arrow格式数据，
 message ArrowDataResponse {
   bytes arrow_batch = 1;
 }
@@ -27,13 +32,11 @@ message ArrowDataResponse {
 // 批处理请求，包含查询条件或读取参数
 message BatchReadRequest {
   string clientId = 1; // 客户端id
-  string minioServer = 2;
-  string minioPort = 3;
-  string minioAK = 4;
-  string minioSK = 5;
-  ConnectionInfo connection = 8; // 数据库连接信息
-  string requestId = 9;
-  FileType fileType = 10; // 客户端保存文件类型
+  string assetName = 2; // 资产名称
+  string requestId = 3;
+  int32 chainInfoId = 4;
+  string filePath = 5; // 本地存储文件的路径
+  FileType fileType = 6; // 客户端保存文件类型
 }
 
 // 流式任务请求
@@ -48,8 +51,9 @@ message ConnectionInfo {
   string host = 2; // 数据库地址
   string port = 3; // 数据库端口
   string user = 4; // 数据库用户名
-  string password = 5; // 数据库密码
-  string query = 6; // 查询语句或读取指令
+  string tls_cert = 5; // TLS证书
+  string tls_cert_name = 6; // TLS文件名
+  string tls_cert_ext = 7; // TLS文件名扩展
 }
 
 // 文件类型的枚举定义
