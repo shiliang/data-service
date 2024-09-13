@@ -13,38 +13,47 @@ import (
 	"bytes"
 	pb "data-service/generated/datasource"
 	"fmt"
-	"github.com/apache/arrow/go/arrow/array"
 	"github.com/apache/arrow/go/arrow/csv"
 	"github.com/apache/arrow/go/arrow/ipc"
+	"go.uber.org/zap"
 	"io"
+	"os"
 )
 
 // 转换函数，支持不同格式
-func ConvertArrow(data *array.Record, format string) ([]byte, error) {
-	// 如果 format 为空，返回原始数据
-	if format == "" {
-		return nil, nil
-	}
-
-	var output []byte
+func ConvertArrow(stream pb.DataSourceService_ReadStreamingDataClient, filePath string,
+	logger *zap.SugaredLogger, format pb.FileType) error {
 	switch format {
-	case "csv":
-		output = convertToCSV(data)
-	case "json":
-		output = convertToJSON(data)
+	case pb.FileType_FILE_TYPE_CSV:
+		if err := convertToCSV(stream, filePath, logger); err != nil {
+			return fmt.Errorf("convertToCSV: %w", err)
+		}
+	case pb.FileType_FILE_TYPE_ARROW:
+		if err := convertToArrowFile(stream, filePath, logger); err != nil {
+			return fmt.Errorf("convertToCSV: %w", err)
+		}
 	default:
-		return nil, fmt.Errorf("不支持的格式: %s", format)
+		return fmt.Errorf("不支持的格式: %s", format)
 	}
 
-	return output, nil
+	return nil
 }
 
-// 假设的 CSV 转换函数
-func convertToCSV(stream pb.DataSourceService_ReadStreamingDataClient, writer *csv.Writer) error {
+// 把arrow数据流转化为csv格式
+func convertToCSV(stream pb.DataSourceService_ReadStreamingDataClient, filePath string, logger *zap.SugaredLogger) error {
+	file, err := os.Create(filePath + ".csv")
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Errorf("error closing file: %v", err)
+		}
+	}()
 	for {
 		resp, err := stream.Recv()
 		if err == io.EOF {
-			sdk.logger.Info("All data received, closing stream.")
+			logger.Info("All data received, closing stream.")
 			break
 		}
 		if err != nil {
@@ -58,22 +67,77 @@ func convertToCSV(stream pb.DataSourceService_ReadStreamingDataClient, writer *c
 			return fmt.Errorf("error reading Arrow data: %w", err)
 		}
 
-		// 逐行写入 CSV 文件
-		for i := 0; i < int(reader.Record().NumRows()); i++ {
-			var row []string
-			for j := 0; j < int(reader.Record().NumCols()); j++ {
-				value := fmt.Sprintf("%v", reader.Record().Column(j))
-				row = append(row, value)
-			}
-			writer.Write(row)
+		writer := csv.NewWriter(file, reader.Schema())
+		if err := writer.Write(reader.Record()); err != nil {
+			logger.Errorf("error writing record to file: %v", err)
+			return fmt.Errorf("error writing record to file: %w", err)
 		}
-		writer.Flush() // 确保批次数据被写入文件
+
+		err = writer.Flush()
+		if err != nil {
+			logger.Errorf("error flushing record to file: %v", err)
+			return fmt.Errorf("error flushing record to file: %w", err)
+		} // 确保批次数据被写入文件
+		reader.Release() // 确保资源释放
 	}
+	return nil
 }
 
-// 假设的 JSON 转换函数
-func convertToJSON(data *array.Record) []byte {
-	// 在这里实现将 Arrow 转换为 JSON 的逻辑
-	// 这里只是简单示例，实际需要根据 Arrow 表结构实现
-	return []byte("{\"column1\": \"value1\", \"column2\": \"value2\"}\n")
+// convertToArrowFile 将流式接收到的 Arrow 数据保存为 .arrow 文件
+func convertToArrowFile(stream pb.DataSourceService_ReadStreamingDataClient, filePath string, logger *zap.SugaredLogger) error {
+	// 创建输出的 Arrow 文件
+	file, err := os.Create(filePath + ".arrow")
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Errorf("error closing file: %v", err)
+		}
+	}()
+
+	// 使用 *ipc.FileWriter 代替 *ipc.Writer
+	var writer *ipc.FileWriter
+
+	for {
+		// 接收流中的 Arrow 数据批次
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			logger.Info("All data received, closing stream.")
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("error receiving stream: %w", err)
+		}
+
+		// 读取 Arrow 数据批次
+		buf := bytes.NewReader(resp.ArrowBatch)
+		reader, err := ipc.NewReader(buf)
+		if err != nil {
+			return fmt.Errorf("error reading Arrow data: %w", err)
+		}
+
+		// 第一次处理时，创建 Arrow 文件写入器，基于读取到的 schema
+		if writer == nil {
+			writer, err = ipc.NewFileWriter(file, ipc.WithSchema(reader.Schema()))
+			if err != nil {
+				return fmt.Errorf("failed to create Arrow file writer: %w", err)
+			}
+			defer writer.Close() // 确保资源被释放
+		}
+
+		// 将每个批次数据写入 Arrow 文件
+		for reader.Next() {
+			record := reader.Record()
+			if err := writer.Write(record); err != nil {
+				logger.Errorf("error writing record to file: %v", err)
+				return fmt.Errorf("error writing record to Arrow file: %w", err)
+			}
+		}
+
+		// 确保批次数据资源释放
+		reader.Release()
+	}
+
+	return nil
 }

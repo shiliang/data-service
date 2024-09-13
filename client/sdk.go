@@ -8,11 +8,10 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	pb "data-service/generated/datasource"
+	"data-service/utils"
 	"fmt"
-	"github.com/apache/arrow/go/arrow/ipc"
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -72,8 +71,7 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
 		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
 
-	err, _ := sdk.readMinioData(request.GetClientId(), requestId, request.GetMinioServer(), request.GetMinioPort(),
-		request.GetMinioAK(), request.MinioAK)
+	err, _ := sdk.readMinioData(request, response.GetObjectUrl())
 	if err != nil {
 		return &pb.Response{
 			Success: false,
@@ -86,17 +84,21 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
 	}
 }
 
+/**
+ * @Description 流式任务读取数据（小数据量）
+ * @Param
+ * @return
+ **/
 func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb.StreamReadRequest) (*pb.Response, error) {
 	stream, err := sdk.client.ReadStreamingData(ctx, request)
 	if err != nil {
 		sdk.logger.Warnw("Failed to read data", "error", err)
 		return nil, fmt.Errorf("error calling ReadStreamingData: %w", err)
 	}
-	var file *os.File
 	filePath := request.FilePath
 	switch request.FileType {
 	case pb.FileType_FILE_TYPE_CSV:
-		file, err = os.Create(filePath + ".csv")
+		utils.ConvertArrow(stream, filePath, sdk.logger, pb.FileType_FILE_TYPE_CSV)
 	case pb.FileType_FILE_TYPE_JSON:
 		file, err = os.Create(filePath + ".json")
 	case pb.FileType_FILE_TYPE_PARQUET:
@@ -108,33 +110,8 @@ func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb
 	if err != nil {
 		return fmt.Errorf("error creating file: %w", err)
 	}
-	defer file.Close()
 	// 逐批接收 Arrow 数据
-	for {
-		resp, err := stream.Recv()
-		if err != nil {
-			log.Fatalf("Error receiving stream: %v", err)
-		}
-		if err == io.EOF {
-			sdk.logger.Info("All data received, closing stream.")
-			break
-		}
 
-		// 读取 Arrow 数据批次
-		buf := bytes.NewReader(resp.ArrowBatch)
-		reader, err := ipc.NewReader(buf)
-		if err != nil {
-			log.Fatalf("Error reading Arrow data: %v", err)
-		}
-
-		// 处理 Arrow 批次数据
-		record := reader.Record()
-		sdk.logger.Debug("Received record: %v", record)
-		switch request.FileType {
-		case pb.FileType_FILE_TYPE_CSV:
-
-		}
-	}
 }
 
 // close关闭gRPC连接
@@ -230,4 +207,26 @@ func (client *DataServiceClient) writeMinioData(request *pb.MINIORequest) (*pb.R
 		Success: true,
 		Message: fmt.Sprintf("Successfully uploaded %s with a size of %d bytes.", objectName, info.Size),
 	}, nil
+}
+
+/**
+ * @Description 往db里面写数据
+ * @Param
+ * @return
+ **/
+func (sdk *DataServiceClient) writeDBData(ctx context.Context, request *pb.WriterDataRequest) (*pb.Response, error) {
+	stream, err := sdk.client.SendArrowData(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := stream.Send(request); err != nil {
+
+	}
+
+	// 关闭流并接收响应
+	resp, err := stream.CloseAndRecv()
+	if err != nil {
+		return err
+	}
 }

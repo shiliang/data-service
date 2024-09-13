@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	DataSourceService_ReadBatchData_FullMethodName     = "/datasource.DataSourceService/ReadBatchData"
 	DataSourceService_ReadStreamingData_FullMethodName = "/datasource.DataSourceService/ReadStreamingData"
+	DataSourceService_SendArrowData_FullMethodName     = "/datasource.DataSourceService/SendArrowData"
 )
 
 // DataSourceServiceClient is the client API for DataSourceService service.
@@ -32,7 +33,9 @@ type DataSourceServiceClient interface {
 	// 批处理读取数据
 	ReadBatchData(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*BatchResponse, error)
 	// 流式读取数据，使用流式响应来返回数据
-	ReadStreamingData(ctx context.Context, in *StreamReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArrowDataResponse], error)
+	ReadStreamingData(ctx context.Context, in *StreamReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArrowDataBatch], error)
+	// 从客户端发送arrow数据到服务端
+	SendArrowData(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WriterDataRequest, Response], error)
 }
 
 type dataSourceServiceClient struct {
@@ -53,13 +56,13 @@ func (c *dataSourceServiceClient) ReadBatchData(ctx context.Context, in *BatchRe
 	return out, nil
 }
 
-func (c *dataSourceServiceClient) ReadStreamingData(ctx context.Context, in *StreamReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArrowDataResponse], error) {
+func (c *dataSourceServiceClient) ReadStreamingData(ctx context.Context, in *StreamReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArrowDataBatch], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &DataSourceService_ServiceDesc.Streams[0], DataSourceService_ReadStreamingData_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[StreamReadRequest, ArrowDataResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[StreamReadRequest, ArrowDataBatch]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -70,7 +73,20 @@ func (c *dataSourceServiceClient) ReadStreamingData(ctx context.Context, in *Str
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type DataSourceService_ReadStreamingDataClient = grpc.ServerStreamingClient[ArrowDataResponse]
+type DataSourceService_ReadStreamingDataClient = grpc.ServerStreamingClient[ArrowDataBatch]
+
+func (c *dataSourceServiceClient) SendArrowData(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WriterDataRequest, Response], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &DataSourceService_ServiceDesc.Streams[1], DataSourceService_SendArrowData_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WriterDataRequest, Response]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataSourceService_SendArrowDataClient = grpc.ClientStreamingClient[WriterDataRequest, Response]
 
 // DataSourceServiceServer is the server API for DataSourceService service.
 // All implementations must embed UnimplementedDataSourceServiceServer
@@ -81,7 +97,9 @@ type DataSourceServiceServer interface {
 	// 批处理读取数据
 	ReadBatchData(context.Context, *BatchReadRequest) (*BatchResponse, error)
 	// 流式读取数据，使用流式响应来返回数据
-	ReadStreamingData(*StreamReadRequest, grpc.ServerStreamingServer[ArrowDataResponse]) error
+	ReadStreamingData(*StreamReadRequest, grpc.ServerStreamingServer[ArrowDataBatch]) error
+	// 从客户端发送arrow数据到服务端
+	SendArrowData(grpc.ClientStreamingServer[WriterDataRequest, Response]) error
 	mustEmbedUnimplementedDataSourceServiceServer()
 }
 
@@ -95,8 +113,11 @@ type UnimplementedDataSourceServiceServer struct{}
 func (UnimplementedDataSourceServiceServer) ReadBatchData(context.Context, *BatchReadRequest) (*BatchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadBatchData not implemented")
 }
-func (UnimplementedDataSourceServiceServer) ReadStreamingData(*StreamReadRequest, grpc.ServerStreamingServer[ArrowDataResponse]) error {
+func (UnimplementedDataSourceServiceServer) ReadStreamingData(*StreamReadRequest, grpc.ServerStreamingServer[ArrowDataBatch]) error {
 	return status.Errorf(codes.Unimplemented, "method ReadStreamingData not implemented")
+}
+func (UnimplementedDataSourceServiceServer) SendArrowData(grpc.ClientStreamingServer[WriterDataRequest, Response]) error {
+	return status.Errorf(codes.Unimplemented, "method SendArrowData not implemented")
 }
 func (UnimplementedDataSourceServiceServer) mustEmbedUnimplementedDataSourceServiceServer() {}
 func (UnimplementedDataSourceServiceServer) testEmbeddedByValue()                           {}
@@ -142,11 +163,18 @@ func _DataSourceService_ReadStreamingData_Handler(srv interface{}, stream grpc.S
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(DataSourceServiceServer).ReadStreamingData(m, &grpc.GenericServerStream[StreamReadRequest, ArrowDataResponse]{ServerStream: stream})
+	return srv.(DataSourceServiceServer).ReadStreamingData(m, &grpc.GenericServerStream[StreamReadRequest, ArrowDataBatch]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type DataSourceService_ReadStreamingDataServer = grpc.ServerStreamingServer[ArrowDataResponse]
+type DataSourceService_ReadStreamingDataServer = grpc.ServerStreamingServer[ArrowDataBatch]
+
+func _DataSourceService_SendArrowData_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(DataSourceServiceServer).SendArrowData(&grpc.GenericServerStream[WriterDataRequest, Response]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataSourceService_SendArrowDataServer = grpc.ClientStreamingServer[WriterDataRequest, Response]
 
 // DataSourceService_ServiceDesc is the grpc.ServiceDesc for DataSourceService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -165,6 +193,11 @@ var DataSourceService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "ReadStreamingData",
 			Handler:       _DataSourceService_ReadStreamingData_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "SendArrowData",
+			Handler:       _DataSourceService_SendArrowData_Handler,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "data_source.proto",

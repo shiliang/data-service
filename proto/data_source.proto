@@ -9,7 +9,9 @@ service DataSourceService {
   // 批处理读取数据
   rpc ReadBatchData (BatchReadRequest) returns (BatchResponse);
   // 流式读取数据，使用流式响应来返回数据
-  rpc ReadStreamingData(StreamReadRequest) returns (stream ArrowDataResponse);
+  rpc ReadStreamingData(StreamReadRequest) returns (stream ArrowDataBatch);
+  // 从客户端发送arrow数据到服务端
+  rpc SendArrowData(stream WriterDataRequest) returns (Response);
 }
 
 
@@ -23,9 +25,13 @@ message BatchResponse {
   string ObjectUrl = 1; // 下载数据的url
 }
 
-// 返回给客户端的Arrow格式数据，
-message ArrowDataResponse {
+message ArrowDataBatch {
   bytes arrow_batch = 1;
+}
+
+message WriterDataRequest {
+  bytes arrow_batch = 1;
+  ConnectionInfo connection = 2;
 }
 
 // 批处理请求，包含查询条件或读取参数
@@ -71,6 +77,7 @@ enum FileType {
   FILE_TYPE_JSON = 2;     // JSON 文件
   FILE_TYPE_PARQUET = 3;  // Parquet 文件
   FILE_TYPE_AVRO = 4;     // Avro 文件
+  FILE_TYPE_ARROW = 5;
 }
 
 message MINIORequest {
