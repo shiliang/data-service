@@ -7,7 +7,7 @@ option go_package= "./datasource";
 // 数据源服务，提供连接和数据读取功能
 service DataSourceService {
   // 批处理读取数据
-  rpc ReadBatchData (BatchReadRequest) returns (BatchResponse);
+  rpc ReadBatchData (WrappedReadRequest) returns (BatchResponse);
   // 流式读取数据，使用流式响应来返回数据
   rpc ReadStreamingData(StreamReadRequest) returns (stream ArrowDataBatch);
   // 从客户端发送arrow数据到服务端
@@ -38,12 +38,16 @@ message WriterDataRequest {
 message BatchReadRequest {
   string clientId = 1; // 客户端id
   string assetName = 2; // 资产名称
-  string requestId = 3;
-  int32 chainInfoId = 4;
-  string filePath = 5; // 本地存储文件的路径
+  int32 chainInfoId = 3;
+  string filePath = 4; // 本地存储文件的路径
   FileType fileType = 6; // 客户端保存文件类型
   repeated string dbFields = 7;  // 数据库字段名的字符串数组
   ServerInfo serverInfo = 8; // 服务端连接信息
+}
+
+message WrappedReadRequest {
+  BatchReadRequest request = 1;
+  string requestId = 2;
 }
 
 // 流式任务请求

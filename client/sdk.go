@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 	"io"
 	"log"
+	"net/http"
 	"os"
 )
 
@@ -66,26 +67,29 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
 		return nil, fmt.Errorf("Failed to connect to gRPC server: %v", err)
 	}
 
-	sdk.Client = pb.NewDataSourceServiceClient(conn)
+	sdk.client = pb.NewDataSourceServiceClient(conn)
 	sdk.conn = conn
-	requestId := uuid.New().String()
+	wrappedRequest := &pb.WrappedReadRequest{
+		Request:   request,
+		RequestId: uuid.New().String(),
+	}
 	// 调用服务端ReadData方法
-	response, err := sdk.Client.ReadBatchData(ctx, request)
+	response, err := sdk.client.ReadBatchData(ctx, wrappedRequest)
 	if err == nil {
 		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
-
-	err, _ := sdk.readMinioData(request, response.GetObjectUrl())
+	// 读取的数据文件写入到minio中，需要下载到本地
+	err = DownloadFile(response.GetObjectUrl(), request.GetFilePath())
 	if err != nil {
 		return &pb.Response{
 			Success: false,
 			Message: fmt.Sprintf("Failed to read data: %v", err),
-		}
+		}, nil
 	}
 	return &pb.Response{
 		Success: true,
 		Message: fmt.Sprintf("success to read data"),
-	}
+	}, nil
 }
 
 /**
@@ -94,20 +98,20 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
  * @return
  **/
 func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb.StreamReadRequest) (*pb.Response, error) {
-	stream, err := sdk.Client.ReadStreamingData(ctx, request)
+	stream, err := sdk.client.ReadStreamingData(ctx, request)
 	if err != nil {
-		sdk.Logger.Warnw("Failed to read data", "error", err)
+		sdk.logger.Warnw("Failed to read data", "error", err)
 		return nil, fmt.Errorf("error calling ReadStreamingData: %w", err)
 	}
 	filePath := request.FilePath
 	switch request.FileType {
 	case pb.FileType_FILE_TYPE_CSV:
-		err := utils.ConvertDataToFile(stream, filePath, sdk.Logger, pb.FileType_FILE_TYPE_CSV)
+		err := utils.ConvertDataToFile(stream, filePath, sdk.logger, pb.FileType_FILE_TYPE_CSV)
 		if err != nil {
 			return nil, fmt.Errorf("error converting data to CSV: %w", err)
 		}
 	case pb.FileType_FILE_TYPE_ARROW:
-		err := utils.ConvertDataToFile(stream, filePath, sdk.Logger, pb.FileType_FILE_TYPE_ARROW)
+		err := utils.ConvertDataToFile(stream, filePath, sdk.logger, pb.FileType_FILE_TYPE_ARROW)
 		if err != nil {
 			return nil, fmt.Errorf("error converting data to arrow: %w", err)
 		}
@@ -232,4 +236,34 @@ func (sdk *DataServiceClient) writeDBData(ctx context.Context, request *pb.Write
 	if err != nil {
 		return err
 	}
+}
+
+// DownloadFile 从指定的 URL 下载文件并保存到指定的本地路径
+func DownloadFile(url, filePath string) error {
+	// 创建 HTTP 请求
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// 检查请求状态
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download file: status code %d", resp.StatusCode)
+	}
+
+	// 创建本地文件
+	out, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// 将下载的数据写入文件
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
