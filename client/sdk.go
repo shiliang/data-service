@@ -42,6 +42,10 @@ func NewDataServiceClient() *DataServiceClient {
 	}
 }
 
+func (sdk *DataServiceClient) SetClient(client pb.DataSourceServiceClient) {
+	sdk.client = client
+}
+
 /**
  * @Description 从服务端读取apache arrow的数据
  * @Param
@@ -62,11 +66,11 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
 		return nil, fmt.Errorf("Failed to connect to gRPC server: %v", err)
 	}
 
-	sdk.client = pb.NewDataSourceServiceClient(conn)
+	sdk.Client = pb.NewDataSourceServiceClient(conn)
 	sdk.conn = conn
 	requestId := uuid.New().String()
 	// 调用服务端ReadData方法
-	response, err := sdk.client.ReadBatchData(ctx, request)
+	response, err := sdk.Client.ReadBatchData(ctx, request)
 	if err == nil {
 		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
@@ -86,32 +90,31 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
 
 /**
  * @Description 流式任务读取数据（小数据量）
- * @Param
+ * @Param request 读取请求，包含数据源信息
  * @return
  **/
 func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb.StreamReadRequest) (*pb.Response, error) {
-	stream, err := sdk.client.ReadStreamingData(ctx, request)
+	stream, err := sdk.Client.ReadStreamingData(ctx, request)
 	if err != nil {
-		sdk.logger.Warnw("Failed to read data", "error", err)
+		sdk.Logger.Warnw("Failed to read data", "error", err)
 		return nil, fmt.Errorf("error calling ReadStreamingData: %w", err)
 	}
 	filePath := request.FilePath
 	switch request.FileType {
 	case pb.FileType_FILE_TYPE_CSV:
-		utils.ConvertArrow(stream, filePath, sdk.logger, pb.FileType_FILE_TYPE_CSV)
-	case pb.FileType_FILE_TYPE_JSON:
-		file, err = os.Create(filePath + ".json")
-	case pb.FileType_FILE_TYPE_PARQUET:
-		file, err = os.Create(filePath + ".parquet")
+		err := utils.ConvertDataToFile(stream, filePath, sdk.Logger, pb.FileType_FILE_TYPE_CSV)
+		if err != nil {
+			return nil, fmt.Errorf("error converting data to CSV: %w", err)
+		}
+	case pb.FileType_FILE_TYPE_ARROW:
+		err := utils.ConvertDataToFile(stream, filePath, sdk.Logger, pb.FileType_FILE_TYPE_ARROW)
+		if err != nil {
+			return nil, fmt.Errorf("error converting data to arrow: %w", err)
+		}
 	default:
-		return fmt.Errorf("unsupported file type: %v", request.FileType)
+		return nil, fmt.Errorf("unsupported file type: %v", request.FileType)
 	}
-
-	if err != nil {
-		return fmt.Errorf("error creating file: %w", err)
-	}
-	// 逐批接收 Arrow 数据
-
+	return &pb.Response{Success: true}, nil
 }
 
 // close关闭gRPC连接
@@ -215,7 +218,7 @@ func (client *DataServiceClient) writeMinioData(request *pb.MINIORequest) (*pb.R
  * @return
  **/
 func (sdk *DataServiceClient) writeDBData(ctx context.Context, request *pb.WriterDataRequest) (*pb.Response, error) {
-	stream, err := sdk.client.SendArrowData(ctx)
+	stream, err := sdk.Client.SendArrowData(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -21,7 +21,7 @@ import (
 )
 
 // 转换函数，支持不同格式
-func ConvertArrow(stream pb.DataSourceService_ReadStreamingDataClient, filePath string,
+func ConvertDataToFile(stream pb.DataSourceService_ReadStreamingDataClient, filePath string,
 	logger *zap.SugaredLogger, format pb.FileType) error {
 	switch format {
 	case pb.FileType_FILE_TYPE_CSV:
