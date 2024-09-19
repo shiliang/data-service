@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"data-service/config"
 	pb "data-service/generated/datasource"
 	"data-service/utils"
 	"fmt"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	corev1 "k8s.io/api/core/v1"
@@ -12,6 +15,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"net"
+	"os"
 )
 
 type Server struct {
@@ -90,6 +94,8 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 	if err != nil {
 		s.logger.Fatalf("Failed to create Pod: %v", err)
 	}
+	// 监控spark作业执行状态，通过回调函数，获取执行结果
+
 }
 
 func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerStreamingServer[pb.ArrowDataBatch]) error {
@@ -97,9 +103,38 @@ func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerSt
 	panic("implement me")
 }
 
-func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WriterDataRequest, pb.Response]) error {
-	//TODO implement me
-	panic("implement me")
+func (s Server) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (*pb.Response, error) {
+	conf := config.GetConfigMap()
+	var client, err interface{}
+	if conf.OSSType == "minio" {
+		// 创建 MinIO 客户端
+		client, err = minio.New(conf.OSSEndpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(conf.AccessKeyID, conf.SecretAccessKey, ""),
+			Secure: false,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create MinIO client: %v", err)
+		}
+	}
+	// 生成上传文件名
+	fileName := request.GetRequestId() + "_" + request.GetTaskId()
+	// 将字节内容写入本地临时文件
+	tempFilePath := "/tmp/" + fileName
+	if err := os.WriteFile(tempFilePath, request.GetFileContent(), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write file: %v", err)
+	}
+	// 打开临时文件
+	file, err := os.Open(tempFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %v", err)
+	}
+	defer file.Close()
+	// 上传文件到 OSS
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info: %v", err)
+	}
+	client
 }
 
 func (s Server) mustEmbedUnimplementedDataSourceServiceServer() {

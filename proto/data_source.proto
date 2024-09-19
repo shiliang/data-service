@@ -12,6 +12,8 @@ service DataSourceService {
   rpc ReadStreamingData(StreamReadRequest) returns (stream ArrowDataBatch);
   // 从客户端发送arrow数据到服务端
   rpc SendArrowData(stream WriterDataRequest) returns (Response);
+  // 写入OSS数据
+  rpc WriteOSSData(OSSWriteRequest) returns (Response);
 }
 
 
@@ -31,18 +33,18 @@ message ArrowDataBatch {
 
 message WriterDataRequest {
   bytes arrow_batch = 1;
+}
+
+message WriterInternalDataRequest {
+  bytes arrow_batch = 1;
   ConnectionInfo connection = 2;
 }
 
 // 批处理请求，包含查询条件或读取参数
 message BatchReadRequest {
-  string clientId = 1; // 客户端id
-  string assetName = 2; // 资产名称
-  int32 chainInfoId = 3;
-  string filePath = 4; // 本地存储文件的路径
-  FileType fileType = 6; // 客户端保存文件类型
-  repeated string dbFields = 7;  // 数据库字段名的字符串数组
-  ServerInfo serverInfo = 8; // 服务端连接信息
+  string assetName = 1; // 资产名称
+  int32 chainInfoId = 2;
+  repeated string dbFields = 3;  // 数据库字段名的字符串数组
 }
 
 message WrappedReadRequest {
@@ -52,10 +54,10 @@ message WrappedReadRequest {
 
 // 流式任务请求
 message StreamReadRequest {
-  ConnectionInfo connection = 1;
-  string requestId = 2;
-  FileType fileType = 3; // 客户端保存文件类型
-  string filePath = 4;
+  string assetName = 1; // 资产名称
+  int32 chainInfoId = 2;
+  repeated string dbFields = 3;  // 数据库字段名的字符串数组
+  string requestId = 4;
 }
 
 message ConnectionInfo {
@@ -84,16 +86,10 @@ enum FileType {
   FILE_TYPE_ARROW = 5;
 }
 
-message MINIORequest {
-  string dataName = 1;
+message OSSWriteRequest {
+  string taskId = 1;
   string requestId = 2;
-  string server = 3;
-  string port = 4;
-  string accessKeyID = 5;
-  string secretAccessKey = 6;
-  string bucketName = 7;
-  bool useSSL = 8;
-  string filePath = 9;
-  string contentType = 10; // 文件类型
+  string filePath = 3; // 本地文件路径
+  bytes fileContent = 4; // 写入文件的内容
 }
 

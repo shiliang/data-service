@@ -21,6 +21,11 @@ import (
 type DataServiceConf struct {
 	IDAServerAddress string `json:"IDAServerAddress"`
 	IDAServerPort    string `json:"IDAServerPort"`
+	OSSType          string `json:"OSSType"`
+	OSSEndpoint      string `json:"OSSEndpoint"`
+	AccessKeyID      string `json:"AccessKeyID"`
+	SecretAccessKey  string `json:"SecretAccessKey"`
+	UseSSL           bool   `json:"UseSSL"`
 }
 
 func parseConfigMap(data map[string]string) *DataServiceConf {

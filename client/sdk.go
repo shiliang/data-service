@@ -11,6 +11,7 @@ import (
 	"context"
 	pb "data-service/generated/datasource"
 	"data-service/utils"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
@@ -27,6 +28,7 @@ type DataServiceClient struct {
 	client pb.DataSourceServiceClient
 	conn   *grpc.ClientConn
 	logger *zap.SugaredLogger
+	ctx    context.Context
 }
 
 /***
@@ -34,12 +36,15 @@ type DataServiceClient struct {
   * @return DataServiceClient 数据服务客户端
   *
 ***/
-func NewDataServiceClient() *DataServiceClient {
+func NewDataServiceClient(ctx context.Context, serverInfo *pb.ServerInfo) *DataServiceClient {
 	logger, _ := zap.NewDevelopment()
 	sugar := logger.Sugar()
+	// 将 ServerInfo 存放到 context 中
+	ctx = context.WithValue(ctx, "serverInfo", serverInfo)
 	// 创建data service客户端
 	return &DataServiceClient{
 		logger: sugar,
+		ctx:    ctx,
 	}
 }
 
@@ -53,22 +58,10 @@ func (sdk *DataServiceClient) SetClient(client pb.DataSourceServiceClient) {
  * @return
  **/
 func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.BatchReadRequest) (*pb.Response, error) {
-	var serverAddress string
-	if request.GetServerInfo().GetNamespace() == "" {
-		serverAddress = fmt.Sprintf("%s:%s", request.GetServerInfo().GetServiceName(), request.GetServerInfo().GetServicePort())
-	} else {
-		serverAddress = fmt.Sprintf("%s.%s.svc.cluster.local:%s", request.GetServerInfo().GetServiceName(),
-			request.GetServerInfo().GetNamespace(), request.GetServerInfo().GetServicePort())
-	}
-	// 建立grpc连接
-	conn, err := grpc.Dial(serverAddress, grpc.WithInsecure())
+	err := sdk.connect(ctx)
 	if err != nil {
-		// 连接失败
-		return nil, fmt.Errorf("Failed to connect to gRPC server: %v", err)
+		return nil, err
 	}
-
-	sdk.client = pb.NewDataSourceServiceClient(conn)
-	sdk.conn = conn
 	wrappedRequest := &pb.WrappedReadRequest{
 		Request:   request,
 		RequestId: uuid.New().String(),
@@ -77,6 +70,9 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
 	response, err := sdk.client.ReadBatchData(ctx, wrappedRequest)
 	if err == nil {
 		return nil, fmt.Errorf("failed to read data: %w", err)
+	}
+	if err := sdk.close(); err != nil {
+		return nil, fmt.Errorf("failed to close grpc server: %w", err)
 	}
 	// 读取的数据文件写入到minio中，需要下载到本地
 	err = DownloadFile(response.GetObjectUrl(), request.GetFilePath())
@@ -98,10 +94,17 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
  * @return
  **/
 func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb.StreamReadRequest) (*pb.Response, error) {
+	err := sdk.connect(ctx)
+	if err != nil {
+		return nil, err
+	}
 	stream, err := sdk.client.ReadStreamingData(ctx, request)
 	if err != nil {
 		sdk.logger.Warnw("Failed to read data", "error", err)
 		return nil, fmt.Errorf("error calling ReadStreamingData: %w", err)
+	}
+	if err := sdk.close(); err != nil {
+		return nil, fmt.Errorf("failed to close grpc server: %w", err)
 	}
 	filePath := request.FilePath
 	switch request.FileType {
@@ -121,60 +124,50 @@ func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb
 	return &pb.Response{Success: true}, nil
 }
 
-// close关闭gRPC连接
-func (client *DataServiceClient) Close() error {
+// 建立grpc连接
+func (client *DataServiceClient) connect(ctx context.Context) error {
+	serverInfo, ok := ctx.Value("serverInfo").(pb.ServerInfo)
+	if !ok {
+		return errors.New("failed to retrieve ServerInfo from context")
+	}
+	var serverAddress string
+	if serverInfo.GetNamespace() == "" {
+		serverAddress = fmt.Sprintf("%s:%s", serverInfo.GetServiceName(), serverInfo.GetServicePort())
+	} else {
+		serverAddress = fmt.Sprintf("%s.%s.svc.cluster.local:%s", serverInfo.GetServiceName(),
+			serverInfo.GetNamespace(), serverInfo.GetServicePort())
+	}
+	// 建立grpc连接
+	conn, err := grpc.Dial(serverAddress, grpc.WithInsecure())
+	if err != nil {
+		// 连接失败
+		return fmt.Errorf("failed to connect to gRPC server: %v", err)
+	}
+
+	client.client = pb.NewDataSourceServiceClient(conn)
+	client.conn = conn
+	return nil
+}
+
+// 关闭gRPC连接
+func (client *DataServiceClient) close() error {
 	if err := client.conn.Close(); err != nil {
-		return client.Close()
+		return fmt.Errorf("failed to disconnect to gRPC server: %v", err)
 	}
 	return nil
 }
 
-// 从minio中读取数据，转化成文件
-func (client *DataServiceClient) readMinioData(request *pb.MINIORequest, objectUrl string) (*pb.Response, error) {
-	// 创建MinIO客户端
-	minioAddress := fmt.Sprintf("%s:%s", minioServer, minioPort)
-	minioClient, err := minio.New(minioAddress, &minio.Options{
-		Creds:  credentials.NewStaticV4(minioAK, minioSK, ""),
-		Secure: false, // MinIO 未启用 TLS 时为 false
-	})
+// 写入数据文件到OSS，文件名为requestId + taskId
+func (sdk *DataServiceClient) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (*pb.Response, error) {
+	err := sdk.connect(ctx)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
-
-	// 从 MinIO 流式读取文件
-	bucketName := "arrow-data"
-	objectName := fmt.Sprintf("%s/%s/data.arrow", clientId, requestId)
-	ctx := context.Background()
-
-	// 获取对象
-	object, err := minioClient.GetObject(ctx, bucketName, objectName, minio.GetObjectOptions{})
+	response, err := sdk.client.WriteOSSData(ctx, request)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
-	defer object.Close()
-
-	// 创建本地文件以保存数据
-	localFile, err := os.Create("downloaded_data.arrow")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer localFile.Close()
-
-	// 将 MinIO 中的数据流式写入到本地文件
-	bytesWritten, err := io.Copy(localFile, object)
-	if err != nil {
-		log.Fatalln(err)
-		return &pb.Response{
-			Success: false,
-			Message: fmt.Sprintf("Failed to read data : %v", err),
-		}, err
-	}
-
-	fmt.Printf("Successfully downloaded %d bytes from MinIO and saved to downloaded_data.arrow\n", bytesWritten)
-	return &pb.Response{
-		Success: true,
-		Message: "Successfully read data",
-	}, nil
+	return response, nil
 }
 
 // 把本地文件写入minio，写入文件名根据requestId和dataName
