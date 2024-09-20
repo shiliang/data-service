@@ -9,7 +9,7 @@ service DataSourceService {
   // 批处理读取数据
   rpc ReadBatchData (WrappedReadRequest) returns (BatchResponse);
   // 流式读取数据，使用流式响应来返回数据
-  rpc ReadStreamingData(StreamReadRequest) returns (stream ArrowDataBatch);
+  rpc ReadStreamingData(StreamReadRequest) returns (stream ArrowResponse);
   // 从客户端发送arrow数据到服务端
   rpc SendArrowData(stream WriterDataRequest) returns (Response);
   // 写入OSS数据
@@ -27,7 +27,7 @@ message BatchResponse {
   string ObjectUrl = 1; // 下载数据的url
 }
 
-message ArrowDataBatch {
+message ArrowResponse {
   bytes arrow_batch = 1;
 }
 
@@ -36,7 +36,7 @@ message WriterDataRequest {
 }
 
 message WriterInternalDataRequest {
-  bytes arrow_batch = 1;
+  string query = 1;
   ConnectionInfo connection = 2;
 }
 
@@ -58,6 +58,8 @@ message StreamReadRequest {
   int32 chainInfoId = 2;
   repeated string dbFields = 3;  // 数据库字段名的字符串数组
   string requestId = 4;
+  FileType fileType = 5;
+  string filePath = 6;
 }
 
 message ConnectionInfo {
@@ -83,7 +85,15 @@ enum FileType {
   FILE_TYPE_JSON = 2;     // JSON 文件
   FILE_TYPE_PARQUET = 3;  // Parquet 文件
   FILE_TYPE_AVRO = 4;     // Avro 文件
-  FILE_TYPE_ARROW = 5;
+  FILE_TYPE_ARROW = 5;  // arrow文件
+  STREAM_ARROW = 6; // arrow字节流
+}
+
+// 数据源类型
+enum DataSourceType {
+  DATA_SOURCE_TYPE_UNKNOWN = 0;
+  DATA_SOURCE_TYPE_MYSQL = 1;
+  DATA_SOURCE_TYPE_KINGBASE = 2;
 }
 
 message OSSWriteRequest {

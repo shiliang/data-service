@@ -14,12 +14,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"io"
-	"log"
 	"net/http"
 	"os"
 )
@@ -93,35 +90,86 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
  * @Param request 读取请求，包含数据源信息
  * @return
  **/
-func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb.StreamReadRequest) (*pb.Response, error) {
+func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb.StreamReadRequest) *pb.Response {
 	err := sdk.connect(ctx)
 	if err != nil {
-		return nil, err
+		return &pb.Response{
+			Success: false,
+			Message: fmt.Sprintf("Failed to connect to gRPC server: %v", err),
+		}
 	}
 	stream, err := sdk.client.ReadStreamingData(ctx, request)
 	if err != nil {
 		sdk.logger.Warnw("Failed to read data", "error", err)
-		return nil, fmt.Errorf("error calling ReadStreamingData: %w", err)
+		return &pb.Response{
+			Success: false,
+			Message: fmt.Sprintf("Error calling ReadStreamingData: %v", err),
+		}
 	}
-	if err := sdk.close(); err != nil {
-		return nil, fmt.Errorf("failed to close grpc server: %w", err)
-	}
-	filePath := request.FilePath
+
 	switch request.FileType {
 	case pb.FileType_FILE_TYPE_CSV:
+		filePath := request.FilePath
 		err := utils.ConvertDataToFile(stream, filePath, sdk.logger, pb.FileType_FILE_TYPE_CSV)
 		if err != nil {
-			return nil, fmt.Errorf("error converting data to CSV: %w", err)
+			return &pb.Response{
+				Success: false,
+				Message: fmt.Sprintf("Error converting data to CSV: %v", err),
+			}
 		}
 	case pb.FileType_FILE_TYPE_ARROW:
+		filePath := request.FilePath
 		err := utils.ConvertDataToFile(stream, filePath, sdk.logger, pb.FileType_FILE_TYPE_ARROW)
 		if err != nil {
-			return nil, fmt.Errorf("error converting data to arrow: %w", err)
+			return &pb.Response{
+				Success: false,
+				Message: fmt.Sprintf("Error converting data to arrow: %v", err),
+			}
 		}
 	default:
-		return nil, fmt.Errorf("unsupported file type: %v", request.FileType)
+		return &pb.Response{
+			Success: false,
+			Message: fmt.Sprintf("unsupported file type: %v", request.FileType),
+		}
 	}
-	return &pb.Response{Success: true}, nil
+	if err := sdk.Close(); err != nil {
+		return &pb.Response{
+			Success: true,
+			Message: fmt.Sprintf("failed to close grpc server: %v", err),
+		}
+	}
+	return &pb.Response{
+		Success: true,
+		Message: fmt.Sprintf("unsupported file type: %v", request.FileType),
+	}
+}
+
+// ReadStream 用于从数据源读取流式数据。调用完此方法后，需调用Close方法关闭客户端
+// 该方法首先尝试连接数据服务，连接成功后，使用提供的请求调用 ReadStreamingData 方法。
+// 如果在连接或读取过程中发生错误，该方法将返回错误。
+// 参数:
+//   - ctx: 上下文，用于传递请求范围的配置和值。
+//   - request: 包含读取流数据所需信息的请求对象。
+//
+// 返回值:
+//   - pb.DataSourceService_ReadStreamingDataClient: 一个客户端流，用于处理返回的流式数据。
+//   - error: 如果连接或读取过程中发生错误，则返回错误。
+func (sdk *DataServiceClient) ReadStream(ctx context.Context, request *pb.StreamReadRequest) (pb.DataSourceService_ReadStreamingDataClient, error) {
+	// 尝试连接数据服务。
+	err := sdk.connect(ctx)
+	if err != nil {
+		// 如果连接失败，返回错误。
+		return nil, err
+	}
+	// 使用提供的请求调用 ReadStreamingData 方法。
+	stream, err := sdk.client.ReadStreamingData(ctx, request)
+	if err != nil {
+		// 如果读取数据失败，记录日志并返回错误。
+		sdk.logger.Warnw("Failed to read data", "error", err)
+		return nil, fmt.Errorf("error calling ReadStreamingData: %w", err)
+	}
+	// 返回成功的数据流。
+	return stream, nil
 }
 
 // 建立grpc连接
@@ -150,7 +198,7 @@ func (client *DataServiceClient) connect(ctx context.Context) error {
 }
 
 // 关闭gRPC连接
-func (client *DataServiceClient) close() error {
+func (client *DataServiceClient) Close() error {
 	if err := client.conn.Close(); err != nil {
 		return fmt.Errorf("failed to disconnect to gRPC server: %v", err)
 	}
@@ -170,47 +218,8 @@ func (sdk *DataServiceClient) WriteOSSData(ctx context.Context, request *pb.OSSW
 	return response, nil
 }
 
-// 把本地文件写入minio，写入文件名根据requestId和dataName
-func (client *DataServiceClient) writeMinioData(request *pb.MINIORequest) (*pb.Response, error) {
-	endpoint := request.GetServer() + ":" + request.GetPort()
-	objectName := request.GetRequestId() + "-" + request.GetDataName()
-	minioClient, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(request.GetAccessKeyID(), request.GetSecretAccessKey(), ""),
-		Secure: request.GetUseSSL(),
-	})
-	if err != nil {
-		log.Fatalln(err)
-	}
-	// 检查存储桶是否存在，不存在则创建
-	exists, errBucketExists := minioClient.BucketExists(context.Background(), request.GetBucketName())
-	if errBucketExists != nil {
-		log.Fatalln(errBucketExists)
-	}
-	if !exists {
-		err = minioClient.MakeBucket(context.Background(), request.GetBucketName(), minio.MakeBucketOptions{})
-		if err != nil {
-			log.Fatalln(err)
-		}
-		fmt.Printf("Successfully created %s\n", request.GetBucketName())
-	}
-
-	// 上传文件到 MinIO
-	info, err := minioClient.FPutObject(context.Background(), request.GetBucketName(),
-		objectName, request.GetFilePath(), minio.PutObjectOptions{ContentType: request.GetContentType()})
-	if err != nil {
-		return &pb.Response{
-			Success: false,
-			Message: "Successfully read data",
-		}, nil
-	}
-	return &pb.Response{
-		Success: true,
-		Message: fmt.Sprintf("Successfully uploaded %s with a size of %d bytes.", objectName, info.Size),
-	}, nil
-}
-
 /**
- * @Description 往db里面写数据
+ * @Description 往外部数据源写数据
  * @Param
  * @return
  **/

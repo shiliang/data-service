@@ -20,7 +20,21 @@ import (
 
 type Server struct {
 	logger *zap.SugaredLogger
-	pb.UnimplementedDataSourceServiceServer
+}
+
+func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerStreamingServer[pb.ArrowResponse]) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WriterDataRequest, pb.Response]) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s Server) mustEmbedUnimplementedDataSourceServiceServer() {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadRequest) (*pb.BatchResponse, error) {
@@ -98,11 +112,6 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 
 }
 
-func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerStreamingServer[pb.ArrowDataBatch]) error {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (s Server) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (*pb.Response, error) {
 	conf := config.GetConfigMap()
 	var client, err interface{}
@@ -135,11 +144,6 @@ func (s Server) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (
 		return nil, fmt.Errorf("failed to get file info: %v", err)
 	}
 	client
-}
-
-func (s Server) mustEmbedUnimplementedDataSourceServiceServer() {
-	//TODO implement me
-	panic("implement me")
 }
 
 func main() {
