@@ -12,6 +12,7 @@ package utils
 import (
 	"context"
 	config2 "data-service/config"
+	pb2 "data-service/generated/datasource"
 	pb "data-service/generated/ida"
 	"google.golang.org/grpc"
 	"log"
@@ -30,4 +31,16 @@ func GetDatasourceByAssetName(requestId string, assetName string, chainId int32)
 	response, err := stub.GetPrivateAssetInfoByEnName(context.Background(), request)
 	product_data_set := response.GetData().ProductInfo.ProductDataSet
 	return product_data_set
+}
+
+// 转换数据源类型
+func ConvertDataSourceType(dbType int32) pb2.DataSourceType {
+	switch dbType {
+	case 1:
+		return pb2.DataSourceType_DATA_SOURCE_TYPE_MYSQL
+	case 2:
+		return pb2.DataSourceType_DATA_SOURCE_TYPE_MYSQL
+	default:
+		return pb2.DataSourceType_DATA_SOURCE_TYPE_UNKNOWN
+	}
 }

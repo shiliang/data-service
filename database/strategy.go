@@ -7,7 +7,7 @@
 
 *
 */
-package main
+package database
 
 type DatabaseStrategy interface {
 	GetJdbcUrl() string

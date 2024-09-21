@@ -7,7 +7,7 @@
 
 *
 */
-package main
+package database
 
 import "fmt"
 
@@ -20,7 +20,7 @@ type MySQLStrategy struct {
 }
 
 func (m MySQLStrategy) GetJdbcUrl() string {
-	return fmt.Sprintf("jdbc:mysql://%s:%d/%s", m.Host, m.Port, m.Database)
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", m.Username, m.Password, m.Host, m.Port, m.Database)
 }
 
 func (m MySQLStrategy) GetUser() string {

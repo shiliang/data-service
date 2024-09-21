@@ -7,7 +7,7 @@
 
 *
 */
-package main
+package database
 
 import "fmt"
 

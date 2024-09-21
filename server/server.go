@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"data-service/config"
+	"data-service/database"
 	pb "data-service/generated/datasource"
 	"data-service/utils"
 	"fmt"
+	"github.com/apache/arrow/go/arrow/ipc"
+	"github.com/apache/arrow/go/arrow/memory"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"go.uber.org/zap"
@@ -14,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"log"
 	"net"
 	"os"
 )
@@ -27,9 +32,37 @@ func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerSt
 	panic("implement me")
 }
 
-func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WriterDataRequest, pb.Response]) error {
-	//TODO implement me
-	panic("implement me")
+func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WrappedWriterDataRequest, pb.Response]) error {
+	// 接收arrow数据流发过来的数据
+	for {
+		request, err := g.Recv()
+		if err != nil {
+			return err
+		}
+		// 处理请求，拿取数据
+		reader := bytes.NewReader(request.GetRequest().GetArrowBatch())
+		// 获取要连接的数据库信息
+		product_data_set := utils.GetDatasourceByAssetName(request.GetRequestId(), request.GetRequest().GetAssetName(),
+			request.GetRequest().GetChainInfoId())
+		dbType := utils.ConvertDataSourceType(product_data_set.GetDbConnInfo().GetType())
+		// 使用 Arrow 的内存分配器
+		pool := memory.NewGoAllocator()
+
+		// 使用 IPC 文件读取器解析数据
+		ipcReader, err := ipc.NewFileReader(reader, ipc.WithAllocator(pool))
+		if err != nil {
+			log.Fatalf("Failed to create Arrow IPC reader: %v", err)
+		}
+		defer ipcReader.Close()
+
+		// 获取表结构信息
+		schema := ipcReader.Schema()
+		database.DatabaseFactory(dbType, product_data_set.GetDbConnInfo().GetHost(),
+			product_data_set.GetDbConnInfo().GetPort(),
+			product_data_set.GetDbConnInfo().GetDbName(),
+			product_data_set.GetDbConnInfo().GetUsername(),
+			product_data_set.GetDbConnInfo().Get)
+	}
 }
 
 func (s Server) mustEmbedUnimplementedDataSourceServiceServer() {

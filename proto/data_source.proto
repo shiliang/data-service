@@ -11,7 +11,7 @@ service DataSourceService {
   // 流式读取数据，使用流式响应来返回数据
   rpc ReadStreamingData(StreamReadRequest) returns (stream ArrowResponse);
   // 从客户端发送arrow数据到服务端
-  rpc SendArrowData(stream WriterDataRequest) returns (Response);
+  rpc SendArrowData(stream WrappedWriterDataRequest) returns (Response);
   // 写入OSS数据
   rpc WriteOSSData(OSSWriteRequest) returns (Response);
 }
@@ -33,6 +33,13 @@ message ArrowResponse {
 
 message WriterDataRequest {
   bytes arrow_batch = 1;
+  string assetName = 2; // 资产名称
+  int32 chainInfoId = 3;
+}
+
+message WrappedWriterDataRequest {
+  WriterDataRequest request = 1;
+  string requestId = 2;
 }
 
 message WriterInternalDataRequest {
@@ -94,6 +101,7 @@ enum DataSourceType {
   DATA_SOURCE_TYPE_UNKNOWN = 0;
   DATA_SOURCE_TYPE_MYSQL = 1;
   DATA_SOURCE_TYPE_KINGBASE = 2;
+  DATA_SOURCE_TYPE_HIVE = 3;
 }
 
 message OSSWriteRequest {

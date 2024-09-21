@@ -11,7 +11,6 @@ import (
 	"context"
 	pb "data-service/generated/datasource"
 	"data-service/utils"
-	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -33,16 +32,30 @@ type DataServiceClient struct {
   * @return DataServiceClient 数据服务客户端
   *
 ***/
-func NewDataServiceClient(ctx context.Context, serverInfo *pb.ServerInfo) *DataServiceClient {
+func NewDataServiceClient(ctx context.Context, serverInfo *pb.ServerInfo) (*DataServiceClient, error) {
 	logger, _ := zap.NewDevelopment()
 	sugar := logger.Sugar()
-	// 将 ServerInfo 存放到 context 中
-	ctx = context.WithValue(ctx, "serverInfo", serverInfo)
+	var serverAddress string
+	if serverInfo.GetNamespace() == "" {
+		serverAddress = fmt.Sprintf("%s:%s", serverInfo.GetServiceName(), serverInfo.GetServicePort())
+	} else {
+		serverAddress = fmt.Sprintf("%s.%s.svc.cluster.local:%s", serverInfo.GetServiceName(),
+			serverInfo.GetNamespace(), serverInfo.GetServicePort())
+	}
+	// 建立grpc连接
+	conn, err := grpc.Dial(serverAddress, grpc.WithInsecure())
+	if err != nil {
+		// 连接失败
+		return nil, fmt.Errorf("failed to connect to server: %w", err)
+	}
+	client := pb.NewDataSourceServiceClient(conn)
+
 	// 创建data service客户端
 	return &DataServiceClient{
 		logger: sugar,
 		ctx:    ctx,
-	}
+		client: client,
+	}, nil
 }
 
 func (sdk *DataServiceClient) SetClient(client pb.DataSourceServiceClient) {
@@ -68,9 +81,6 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
 	if err == nil {
 		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
-	if err := sdk.close(); err != nil {
-		return nil, fmt.Errorf("failed to close grpc server: %w", err)
-	}
 	// 读取的数据文件写入到minio中，需要下载到本地
 	err = DownloadFile(response.GetObjectUrl(), request.GetFilePath())
 	if err != nil {
@@ -91,13 +101,6 @@ func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.Bat
  * @return
  **/
 func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb.StreamReadRequest) *pb.Response {
-	err := sdk.connect(ctx)
-	if err != nil {
-		return &pb.Response{
-			Success: false,
-			Message: fmt.Sprintf("Failed to connect to gRPC server: %v", err),
-		}
-	}
 	stream, err := sdk.client.ReadStreamingData(ctx, request)
 	if err != nil {
 		sdk.logger.Warnw("Failed to read data", "error", err)
@@ -132,12 +135,6 @@ func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb
 			Message: fmt.Sprintf("unsupported file type: %v", request.FileType),
 		}
 	}
-	if err := sdk.Close(); err != nil {
-		return &pb.Response{
-			Success: true,
-			Message: fmt.Sprintf("failed to close grpc server: %v", err),
-		}
-	}
 	return &pb.Response{
 		Success: true,
 		Message: fmt.Sprintf("unsupported file type: %v", request.FileType),
@@ -155,12 +152,6 @@ func (sdk *DataServiceClient) ReadStreamingData(ctx context.Context, request *pb
 //   - pb.DataSourceService_ReadStreamingDataClient: 一个客户端流，用于处理返回的流式数据。
 //   - error: 如果连接或读取过程中发生错误，则返回错误。
 func (sdk *DataServiceClient) ReadStream(ctx context.Context, request *pb.StreamReadRequest) (pb.DataSourceService_ReadStreamingDataClient, error) {
-	// 尝试连接数据服务。
-	err := sdk.connect(ctx)
-	if err != nil {
-		// 如果连接失败，返回错误。
-		return nil, err
-	}
 	// 使用提供的请求调用 ReadStreamingData 方法。
 	stream, err := sdk.client.ReadStreamingData(ctx, request)
 	if err != nil {
@@ -170,31 +161,6 @@ func (sdk *DataServiceClient) ReadStream(ctx context.Context, request *pb.Stream
 	}
 	// 返回成功的数据流。
 	return stream, nil
-}
-
-// 建立grpc连接
-func (client *DataServiceClient) connect(ctx context.Context) error {
-	serverInfo, ok := ctx.Value("serverInfo").(pb.ServerInfo)
-	if !ok {
-		return errors.New("failed to retrieve ServerInfo from context")
-	}
-	var serverAddress string
-	if serverInfo.GetNamespace() == "" {
-		serverAddress = fmt.Sprintf("%s:%s", serverInfo.GetServiceName(), serverInfo.GetServicePort())
-	} else {
-		serverAddress = fmt.Sprintf("%s.%s.svc.cluster.local:%s", serverInfo.GetServiceName(),
-			serverInfo.GetNamespace(), serverInfo.GetServicePort())
-	}
-	// 建立grpc连接
-	conn, err := grpc.Dial(serverAddress, grpc.WithInsecure())
-	if err != nil {
-		// 连接失败
-		return fmt.Errorf("failed to connect to gRPC server: %v", err)
-	}
-
-	client.client = pb.NewDataSourceServiceClient(conn)
-	client.conn = conn
-	return nil
 }
 
 // 关闭gRPC连接
@@ -207,10 +173,6 @@ func (client *DataServiceClient) Close() error {
 
 // 写入数据文件到OSS，文件名为requestId + taskId
 func (sdk *DataServiceClient) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (*pb.Response, error) {
-	err := sdk.connect(ctx)
-	if err != nil {
-		return nil, err
-	}
 	response, err := sdk.client.WriteOSSData(ctx, request)
 	if err != nil {
 		return nil, err
@@ -223,21 +185,40 @@ func (sdk *DataServiceClient) WriteOSSData(ctx context.Context, request *pb.OSSW
  * @Param
  * @return
  **/
-func (sdk *DataServiceClient) writeDBData(ctx context.Context, request *pb.WriterDataRequest) (*pb.Response, error) {
-	stream, err := sdk.Client.SendArrowData(ctx)
+func (sdk *DataServiceClient) writeDBData(ctx context.Context, request *pb.WriterDataRequest) *pb.Response {
+	stream, err := sdk.client.SendArrowData(ctx)
+	// 生成requestId
+	requestId := uuid.New().String()
+	wrappedRequest := &pb.WrappedWriterDataRequest{
+		Request:   request,
+		RequestId: requestId,
+	}
 	if err != nil {
-		return nil, err
+		return &pb.Response{
+			Success: false,
+			Message: fmt.Sprintf("failed to create stream: %v", err),
+		}
 	}
-
-	if err := stream.Send(request); err != nil {
-
+	if err := stream.Send(wrappedRequest); err != nil {
+		return &pb.Response{
+			Success: false,
+			Message: fmt.Sprintf("failed to send stream: %v", err),
+		}
 	}
-
-	// 关闭流并接收响应
-	resp, err := stream.CloseAndRecv()
-	if err != nil {
-		return err
+	return &pb.Response{
+		Success: true,
+		Message: fmt.Sprintf("success to write data: %v", err),
 	}
+}
+
+// 往内置数据库写数据
+func (sdk *DataServiceClient) writeInternalDBData(ctx context.Context, request *pb.WriterInternalDataRequest) *pb.Response {
+
+}
+
+// 读内置数据库数据
+func (sdk *DataServiceClient) readInternalDBData(ctx context.Context, request *pb.ReadInternalDataRequest) *pb.Response {
+
 }
 
 // DownloadFile 从指定的 URL 下载文件并保存到指定的本地路径
