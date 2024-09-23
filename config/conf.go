@@ -26,6 +26,8 @@ type DataServiceConf struct {
 	AccessKeyID      string `json:"AccessKeyID"`
 	SecretAccessKey  string `json:"SecretAccessKey"`
 	UseSSL           bool   `json:"UseSSL"`
+	HttpPort         string `json:"HttpPort"`
+	SparkNamespace   string `json:"SparkNamespace"`
 }
 
 func parseConfigMap(data map[string]string) *DataServiceConf {

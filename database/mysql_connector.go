@@ -56,15 +56,15 @@ func setupTLSConfig(certContent string) error {
 	return nil
 }
 
-func (m *MySQLStrategy) ConnectToDB(info *pb.DBConnInfo) error {
+func (m *MySQLStrategy) ConnectToDB() error {
 	// 直接使用证书字符串设置 TLS 配置
-	err := setupTLSConfig(info.TlsCert)
+	err := setupTLSConfig(m.info.TlsCert)
 	if err != nil {
 		m.logger.Fatalf("Failed to setup TLS: %v", err)
 		return fmt.Errorf("failed to setup TLS: %v", err)
 	}
-	dsn := fmt.Sprintf("%s@tcp(%s:%d)/%s?tls=%s", info.Username, info.Host, info.Port,
-		info.DbName, common.MYSQL_TLS_CONFIG)
+	dsn := fmt.Sprintf("%s@tcp(%s:%d)/%s?tls=%s", m.info.Username, m.info.Host, m.info.Port,
+		m.info.DbName, common.MYSQL_TLS_CONFIG)
 	// 打开数据库连接
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -109,4 +109,22 @@ func (m *MySQLStrategy) Close() error {
 	// 如果数据库连接未初始化，直接返回 nil
 	m.logger.Warn("Attempted to close a non-initialized DB connection")
 	return nil
+}
+
+func (m *MySQLStrategy) GetJdbcUrl() (string, error) {
+	// 设置 TLS 配置，使用从 tls_cert 中提取的内容
+	err := setupTLSConfig(m.info.TlsCert)
+	if err != nil {
+		return "", fmt.Errorf("failed to setup TLS config: %v", err)
+	}
+
+	// 构建 JDBC URL
+	jdbcUrl := fmt.Sprintf(
+		"jdbc:mysql://%s:%d/%s?useSSL=true&requireSSL=true&verifyServerCertificate=true&tls=%s",
+		m.info.Host,
+		m.info.Port,
+		m.info.DbName,
+		common.MYSQL_TLS_CONFIG,
+	)
+	return jdbcUrl, nil
 }

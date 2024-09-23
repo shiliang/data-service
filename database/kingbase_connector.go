@@ -55,9 +55,9 @@ func writeCertToTempFile(certContent string) (string, error) {
 	return tempFile.Name(), nil
 }
 
-func (k *KingbaseStrategy) ConnectToDB(info *pb.DBConnInfo) error {
+func (k *KingbaseStrategy) ConnectToDB() error {
 	// 将证书字符串写入临时文件
-	certPath, err := writeCertToTempFile(info.TlsCert)
+	certPath, err := writeCertToTempFile(k.info.TlsCert)
 	if err != nil {
 		k.logger.Fatalf("Failed to write cert to temp file: %v", err)
 		return fmt.Errorf("failed to write cert to temp file: %v", err)
@@ -71,7 +71,8 @@ func (k *KingbaseStrategy) ConnectToDB(info *pb.DBConnInfo) error {
 
 	// 使用 PostgreSQL 驱动的标准 DSN 格式，并通过 sslrootcert 引用证书文件
 	sslmode := "verify-full"
-	dsn := fmt.Sprintf("postgres://%s@%s:%d/%s?sslmode=%s&sslrootcert=%s", info.Username, info.Host, info.Port, info.DbName, sslmode, certPath)
+	dsn := fmt.Sprintf("postgres://%s@%s:%d/%s?sslmode=%s&sslrootcert=%s",
+		k.info.Username, k.info.Host, k.info.Port, k.info.DbName, sslmode, certPath)
 
 	// 打开数据库连接
 	db, err := sql.Open("postgres", dsn)
@@ -120,4 +121,11 @@ func (k *KingbaseStrategy) Close() error {
 	k.logger.Warn("Attempted to close a non-initialized DB connection")
 	return nil
 
+}
+
+func (k *KingbaseStrategy) GetJdbcUrl() (string, error) {
+	// 构建 JDBC URL
+	jdbcUrl := fmt.Sprintf("jdbc:postgresql://%s:%d/%s", k.info.Host, k.info.Port, k.info.DbName)
+
+	return jdbcUrl, nil
 }

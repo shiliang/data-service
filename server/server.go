@@ -3,28 +3,33 @@ package main
 import (
 	"bytes"
 	"context"
+	"data-service/common"
 	"data-service/config"
 	"data-service/database"
 	pb "data-service/generated/datasource"
+	"data-service/server/routes"
 	"data-service/utils"
+	"database/sql"
 	"fmt"
+	"github.com/apache/arrow/go/arrow"
 	"github.com/apache/arrow/go/arrow/ipc"
 	"github.com/apache/arrow/go/arrow/memory"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"log"
 	"net"
+	"net/http"
 	"os"
+	"strings"
 )
 
 type Server struct {
 	logger *zap.SugaredLogger
+	pb.UnimplementedDataSourceServiceServer
 }
 
 func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerStreamingServer[pb.ArrowResponse]) error {
@@ -49,15 +54,23 @@ func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WrappedWriterDataR
 		pool := memory.NewGoAllocator()
 
 		// 使用 IPC 文件读取器解析数据
-		ipcReader, err := ipc.NewFileReader(reader, ipc.WithAllocator(pool))
+		ipcReader, err := ipc.NewReader(reader, ipc.WithAllocator(pool))
 		if err != nil {
 			log.Fatalf("Failed to create Arrow IPC reader: %v", err)
 		}
-		defer ipcReader.Close()
+		defer ipcReader.Release()
 
 		// 获取表结构信息
 		schema := ipcReader.Schema()
-		database.DatabaseFactory(dbType, product_data_set.DbConnInfo)
+		table := product_data_set.TableName
+		dbStrategy, err := database.DatabaseFactory(dbType, product_data_set.DbConnInfo)
+		if err := dbStrategy.ConnectToDB(); err != nil {
+			return fmt.Errorf("failed to connect to database: %v", err)
+		}
+		db := database.GetDB(dbStrategy)
+		if err := insertArrowDataInBatches(db, table, schema, ipcReader); err != nil {
+			return fmt.Errorf("failed to insert Arrow data: %v", err)
+		}
 	}
 }
 
@@ -70,80 +83,42 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 	assetName := request.GetRequest().GetAssetName()
 	chainId := request.GetRequest().GetChainInfoId()
 	requestId := request.GetRequestId()
+	conf := config.GetConfigMap()
 	// 用资产名称取数据库连接信息
 	product_data_set := utils.GetDatasourceByAssetName(requestId, assetName, chainId)
+	dbType := utils.ConvertDataSourceType(product_data_set.GetDbConnInfo().GetType())
+	dbStrategy, err := database.DatabaseFactory(dbType, product_data_set.DbConnInfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database strategy: %v", err)
+	}
+	jdbcUrl, err := dbStrategy.GetJdbcUrl()
 	// 初始化k8s客户端
-	config, err := rest.InClusterConfig()
+	k8s_config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Kubernetes config: %v", err)
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(k8s_config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client: %v", err)
 	}
 
 	// 创建 Spark Pod，并将数据源信息作为环境变量传递
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "spark-pod",
-			Namespace: "default",
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:  "spark-container",
-					Image: "spark:latest", // 替换为实际的 Spark 镜像
-					Args: []string{
-						"/opt/spark/bin/spark-submit",
-						"--class", "org.apache.spark.examples.SparkPi",
-						"--master", "k8s://https://kubernetes.default.svc",
-						"--deploy-mode", "cluster",
-						"--conf", fmt.Sprintf("spark.executor.instances=2"),
-						"--conf", fmt.Sprintf("spark.kubernetes.container.image=spark:latest"),
-						"--conf", fmt.Sprintf("spark.datasource.jdbc.url=%s", jdbcUrl),
-						"--conf", fmt.Sprintf("spark.datasource.jdbc.username=%s", username),
-						"--conf", fmt.Sprintf("spark.datasource.jdbc.password=%s", password),
-						"local:///opt/spark/examples/jars/spark-examples_2.12-3.0.1.jar",
-					},
-					Env: []corev1.EnvVar{
-						{
-							Name:  "JDBC_URL",
-							Value: jdbcUrl,
-						},
-						{
-							Name:  "DB_USERNAME",
-							Value: username,
-						},
-						{
-							Name:  "DB_PASSWORD",
-							Value: password,
-						},
-					},
-					Ports: []corev1.ContainerPort{
-						{
-							Name:          "spark-port",
-							ContainerPort: 7077,
-						},
-					},
-				},
-			},
-			RestartPolicy: corev1.RestartPolicyNever,
-		},
-	}
-
+	podName := "spark-job-" + requestId
 	// 创建 Pod
-	pod, err = clientset.CoreV1().Pods("default").Create(context.TODO(), pod, metav1.CreateOptions{})
+	_, err = utils.CreateSparkPod(clientset, conf.SparkNamespace, podName, jdbcUrl)
 	if err != nil {
 		s.logger.Fatalf("Failed to create Pod: %v", err)
 	}
 	// 监控spark作业执行状态，通过回调函数，获取执行结果
-
+	url := <-routes.MinioUrlChan
+	return &pb.BatchResponse{ObjectUrl: url}, nil
 }
 
 func (s Server) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (*pb.Response, error) {
 	conf := config.GetConfigMap()
-	var client, err interface{}
+	var err interface{}
+	var client *minio.Client
 	if conf.OSSType == "minio" {
 		// 创建 MinIO 客户端
 		client, err = minio.New(conf.OSSEndpoint, &minio.Options{
@@ -172,7 +147,89 @@ func (s Server) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file info: %v", err)
 	}
-	client
+	// 上传文件到 MinIO
+	uploadInfo, err := client.PutObject(ctx, common.BATCH_DATA_BUCKET_NAME, fileName, file, fileInfo.Size(), minio.PutObjectOptions{
+		ContentType: "application/octet-stream", // 设置内容类型，可以根据文件类型动态调整
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file to MinIO: %v", err)
+	}
+
+	// 成功上传后，返回 MinIO 上的文件信息
+	return &pb.Response{
+		Success: true,
+		Message: fmt.Sprintf("File uploaded to MinIO successfully: %s (size: %d bytes)", uploadInfo.Key, uploadInfo.Size),
+	}, nil
+
+}
+
+// 使用事务批量插入Arrow数据到数据库
+func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema, ipcReader *ipc.Reader) error {
+	// 1. 拼接 INSERT INTO 的前半部分
+	columns := []string{}
+	placeholders := []string{}
+	for _, field := range schema.Fields() {
+		columns = append(columns, field.Name)
+		placeholders = append(placeholders, "?")
+	}
+
+	insertSQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName,
+		strings.Join(columns, ", "),
+		strings.Join(placeholders, ", "))
+
+	// 2. 开始事务
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %v", err)
+	}
+
+	// 3. 批量插入数据
+	argsBatch := []interface{}{}
+	rowCount := 0
+
+	for ipcReader.Next() {
+		record := ipcReader.Record()
+
+		// 遍历每一列，提取行数据
+		for rowIdx := 0; rowIdx < int(record.NumRows()); rowIdx++ {
+			for colIdx := 0; colIdx < int(record.NumCols()); colIdx++ {
+				column := record.Column(colIdx)
+				value := column.Data()
+				argsBatch = append(argsBatch, value)
+			}
+			rowCount++
+
+			// 当达到 batchSize 时，执行批量插入
+			if rowCount >= common.BATCH_DATA_SIZE {
+				_, err := tx.Exec(insertSQL, argsBatch...)
+				if err != nil {
+					tx.Rollback()
+					return fmt.Errorf("failed to execute batch insert: %v", err)
+				}
+				// 清空批次数据
+				argsBatch = []interface{}{}
+				rowCount = 0
+			}
+		}
+	}
+
+	// 如果最后一批数据未达到 batchSize，需要手动插入
+	if rowCount > 0 {
+		_, err := tx.Exec(insertSQL, argsBatch...)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to execute final batch insert: %v", err)
+		}
+	}
+
+	// 4. 提交事务
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	log.Println("Data inserted successfully into", tableName)
+	return nil
 }
 
 func main() {
@@ -191,6 +248,15 @@ func main() {
 	pb.RegisterDataSourceServiceServer(grpcServer, dataService)
 	sugaredLogger.Infof("gRPC server running at %v", listen.Addr())
 	if err := grpcServer.Serve(listen); err != nil {
+		sugaredLogger.Fatalf("failed to serve: %v", err)
+	}
+
+	// 注册路由
+	routes.RegisterRoutes()
+	// 启动HTTP服务器
+	conf := config.GetConfigMap()
+	sugaredLogger.Infof("HTTP server running at %s", conf.HttpPort)
+	if err = http.ListenAndServe(":"+conf.HttpPort, nil); err != nil {
 		sugaredLogger.Fatalf("failed to serve: %v", err)
 	}
 }

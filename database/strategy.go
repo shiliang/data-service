@@ -10,12 +10,11 @@
 package database
 
 import (
-	pb "data-service/generated/ida"
 	"database/sql"
 )
 
 type DatabaseStrategy interface {
-	ConnectToDB(info *pb.DBConnInfo) error
+	ConnectToDB() error
 
 	// 执行select
 	Query(sqlQuery string, args ...interface{}) (*sql.Rows, error)
@@ -23,4 +22,6 @@ type DatabaseStrategy interface {
 
 	// 关闭连接
 	Close() error
+
+	GetJdbcUrl() (string, error)
 }
