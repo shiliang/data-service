@@ -9,9 +9,18 @@
 */
 package database
 
+import (
+	pb "data-service/generated/ida"
+	"database/sql"
+)
+
 type DatabaseStrategy interface {
-	GetJdbcUrl() string
-	GetUser() string
-	GetPassword() string
-	GetDriver() string
+	ConnectToDB(info *pb.DBConnInfo) error
+
+	// 执行select
+	Query(sqlQuery string, args ...interface{}) (*sql.Rows, error)
+	// 执行insert
+
+	// 关闭连接
+	Close() error
 }

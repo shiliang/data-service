@@ -9,29 +9,115 @@
 */
 package database
 
-import "fmt"
+import (
+	pb "data-service/generated/ida"
+	"database/sql"
+	"fmt"
+	"go.uber.org/zap"
+	"io/ioutil"
+	"os"
+)
 
 // KingbaseStrategy is a struct that implements DatabaseStrategy for Kingbase database
 type KingbaseStrategy struct {
-	Host     string
-	Port     int
-	Database string
-	Username string
-	Password string
+	info   *pb.DBConnInfo
+	DB     *sql.DB
+	logger *zap.SugaredLogger
 }
 
-func (k KingbaseStrategy) GetJdbcUrl() string {
-	return fmt.Sprintf("jdbc:kingbase8://%s:%d/%s", k.Host, k.Port, k.Database)
+func NewKingbaseStrategy(info *pb.DBConnInfo) *KingbaseStrategy {
+	logger, _ := zap.NewDevelopment()
+	sugar := logger.Sugar()
+
+	return &KingbaseStrategy{
+		info:   info,
+		logger: sugar,
+	}
 }
 
-func (k KingbaseStrategy) GetUser() string {
-	return k.Username
+// 将证书字符串写入临时文件
+func writeCertToTempFile(certContent string) (string, error) {
+	tempFile, err := ioutil.TempFile("", "tls-cert-*.pem")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %v", err)
+	}
+
+	// 将证书内容写入文件
+	if _, err := tempFile.Write([]byte(certContent)); err != nil {
+		return "", fmt.Errorf("failed to write cert to temp file: %v", err)
+	}
+
+	if err := tempFile.Close(); err != nil {
+		return "", fmt.Errorf("failed to close temp file: %v", err)
+	}
+
+	// 返回临时文件路径
+	return tempFile.Name(), nil
 }
 
-func (k KingbaseStrategy) GetPassword() string {
-	return k.Password
+func (k *KingbaseStrategy) ConnectToDB(info *pb.DBConnInfo) error {
+	// 将证书字符串写入临时文件
+	certPath, err := writeCertToTempFile(info.TlsCert)
+	if err != nil {
+		k.logger.Fatalf("Failed to write cert to temp file: %v", err)
+		return fmt.Errorf("failed to write cert to temp file: %v", err)
+	}
+	defer func(name string) {
+		err := os.Remove(name)
+		if err != nil {
+
+		}
+	}(certPath) // 程序结束后删除临时文件
+
+	// 使用 PostgreSQL 驱动的标准 DSN 格式，并通过 sslrootcert 引用证书文件
+	sslmode := "verify-full"
+	dsn := fmt.Sprintf("postgres://%s@%s:%d/%s?sslmode=%s&sslrootcert=%s", info.Username, info.Host, info.Port, info.DbName, sslmode, certPath)
+
+	// 打开数据库连接
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		k.logger.Errorf("Failed to connect to Kingbase: %v", err)
+		return fmt.Errorf("failed to connect to Kingbase: %v", err)
+	}
+
+	// 检查连接是否成功
+	err = db.Ping()
+	if err != nil {
+		k.logger.Errorf("Failed to ping Kingbase: %v", err)
+		return fmt.Errorf("failed to ping Kingbase: %v", err)
+	}
+
+	k.DB = db
+	k.logger.Info("Successfully connected to Kingbase")
+	return nil
 }
 
-func (k KingbaseStrategy) GetDriver() string {
-	return "com.kingbase8.Driver"
+func (k *KingbaseStrategy) Query(sqlQuery string, args ...interface{}) (*sql.Rows, error) {
+	k.logger.Infof("Executing query: %s with args: %v\n", sqlQuery, args)
+	// 执行查询，args 用于绑定 SQL 查询中的占位符
+	rows, err := k.DB.Query(sqlQuery, args...)
+	if err != nil {
+		k.logger.Errorf("Query failed: %v\n", err)
+		return nil, err
+	}
+
+	return rows, nil
+
+}
+
+func (k *KingbaseStrategy) Close() error {
+	// 检查数据库连接是否已经初始化
+	if k.DB != nil {
+		err := k.DB.Close()
+		if err != nil {
+			k.logger.Errorf("Failed to close Kingbase connection: %v", err)
+			return err
+		}
+		k.logger.Info("Kingbase connection closed successfully")
+		return nil
+	}
+	// 如果数据库连接未初始化，直接返回 nil
+	k.logger.Warn("Attempted to close a non-initialized DB connection")
+	return nil
+
 }

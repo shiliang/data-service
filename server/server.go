@@ -57,11 +57,7 @@ func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WrappedWriterDataR
 
 		// 获取表结构信息
 		schema := ipcReader.Schema()
-		database.DatabaseFactory(dbType, product_data_set.GetDbConnInfo().GetHost(),
-			product_data_set.GetDbConnInfo().GetPort(),
-			product_data_set.GetDbConnInfo().GetDbName(),
-			product_data_set.GetDbConnInfo().GetUsername(),
-			product_data_set.GetDbConnInfo().Get)
+		database.DatabaseFactory(dbType, product_data_set.DbConnInfo)
 	}
 }
 

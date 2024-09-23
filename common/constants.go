@@ -7,8 +7,10 @@
 
 *
 */
-package main
+package common
 
 const (
 	TASk_DATA_BUCKET_NAME = "task-data"
+	MYSQL_TLS_CONFIG      = "mysql-tls"
+	KINGBASE_TLS_CONFIG   = "kingbase-tls"
 )
