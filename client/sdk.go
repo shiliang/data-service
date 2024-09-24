@@ -68,10 +68,6 @@ func (sdk *DataServiceClient) SetClient(client pb.DataSourceServiceClient) {
  * @return
  **/
 func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.BatchReadRequest) (*pb.Response, error) {
-	err := sdk.connect(ctx)
-	if err != nil {
-		return nil, err
-	}
 	wrappedRequest := &pb.WrappedReadRequest{
 		Request:   request,
 		RequestId: uuid.New().String(),
@@ -212,14 +208,14 @@ func (sdk *DataServiceClient) writeDBData(ctx context.Context, request *pb.Write
 }
 
 // 往内置数据库写数据
-func (sdk *DataServiceClient) writeInternalDBData(ctx context.Context, request *pb.WriterInternalDataRequest) *pb.Response {
+/*func (sdk *DataServiceClient) writeInternalDBData(ctx context.Context, request *pb.WriterInternalDataRequest) *pb.Response {
 
-}
+}*/
 
 // 读内置数据库数据
-func (sdk *DataServiceClient) readInternalDBData(ctx context.Context, request *pb.ReadInternalDataRequest) *pb.Response {
+/*func (sdk *DataServiceClient) readInternalDBData(ctx context.Context, request *pb.ReadInternalDataRequest) *pb.Response {
 
-}
+}*/
 
 // DownloadFile 从指定的 URL 下载文件并保存到指定的本地路径
 func DownloadFile(url, filePath string) error {

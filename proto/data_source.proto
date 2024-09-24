@@ -52,6 +52,7 @@ message BatchReadRequest {
   string assetName = 1; // 资产名称
   int32 chainInfoId = 2;
   repeated string dbFields = 3;  // 数据库字段名的字符串数组
+  string filePath = 4; // 下载到本地的文件路径
 }
 
 message WrappedReadRequest {
