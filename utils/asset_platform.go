@@ -14,8 +14,10 @@ import (
 	config2 "data-service/config"
 	pb2 "data-service/generated/datasource"
 	pb "data-service/generated/ida"
+	"fmt"
 	"google.golang.org/grpc"
 	"log"
+	"os"
 )
 
 func GetDatasourceByAssetName(requestId string, assetName string, chainId int32) *pb.DataSetInfo {
@@ -39,8 +41,33 @@ func ConvertDataSourceType(dbType int32) pb2.DataSourceType {
 	case 1:
 		return pb2.DataSourceType_DATA_SOURCE_TYPE_MYSQL
 	case 2:
-		return pb2.DataSourceType_DATA_SOURCE_TYPE_MYSQL
+		return pb2.DataSourceType_DATA_SOURCE_TYPE_HIVE
 	default:
 		return pb2.DataSourceType_DATA_SOURCE_TYPE_UNKNOWN
 	}
+}
+
+func ConvertDBType(dbType string) pb2.DataSourceType {
+	switch dbType {
+	case "mysql":
+		return pb2.DataSourceType_DATA_SOURCE_TYPE_MYSQL
+	case "kingbase":
+		return pb2.DataSourceType_DATA_SOURCE_TYPE_KINGBASE
+	default:
+		return pb2.DataSourceType_DATA_SOURCE_TYPE_UNKNOWN
+	}
+}
+
+// GenerateTLSFile 生成本地的 TLS 证书文件
+func GenerateTLSFile(connInfo *pb.DataSetInfo) (string, error) {
+	// 组合文件名和路径
+	filePath := fmt.Sprintf("./%s.%s", connInfo.DbConnInfo.TlsCertName, connInfo.DbConnInfo.TlsCertExt)
+
+	// 创建文件并写入证书内容
+	err := os.WriteFile(filePath, []byte(connInfo.DbConnInfo.TlsCert), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to write TLS certificate file: %v", err)
+	}
+
+	return filePath, nil
 }

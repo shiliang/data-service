@@ -14,6 +14,8 @@ service DataSourceService {
   rpc SendArrowData(stream WrappedWriterDataRequest) returns (Response);
   // 写入OSS数据
   rpc WriteOSSData(OSSWriteRequest) returns (Response);
+  // 往内置数据库写入数据
+  rpc WriteInternalData(stream WriterInternalDataRequest) returns (Response);
 }
 
 
@@ -43,8 +45,9 @@ message WrappedWriterDataRequest {
 }
 
 message WriterInternalDataRequest {
-  string query = 1;
-  ConnectionInfo connection = 2;
+  bytes arrow_batch = 1;
+  string dbName = 2;
+  string tableName = 3;
 }
 
 // 批处理请求，包含查询条件或读取参数
@@ -74,7 +77,7 @@ message ConnectionInfo {
   string dbtype = 1; //数据库类型
   string host = 2; // 数据库地址
   string port = 3; // 数据库端口
-  string user = 4; // 数据库用户名
+  string tableName = 4; // 数据库用户名
   string tls_cert = 5; // TLS证书
   string tls_cert_name = 6; // TLS文件名
   string tls_cert_ext = 7; // TLS文件名扩展

@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-func CreateSparkPod(clientset *kubernetes.Clientset, namespace string, podName string, jdbcUrl string) (*v1.Pod, error) {
+func CreateSparkPod(clientset *kubernetes.Clientset, namespace string, podName string, jdbcUrl string, tlsCert string) (*v1.Pod, error) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
@@ -30,16 +30,16 @@ func CreateSparkPod(clientset *kubernetes.Clientset, namespace string, podName s
 			Containers: []corev1.Container{
 				{
 					Name:  "spark-container",
-					Image: "spark:latest", // 替换为实际的 Spark 镜像
+					Image: "spark:3.5.2", // 替换为实际的 Spark 镜像
 					Args: []string{
 						"/opt/spark/bin/spark-submit",
-						"--class", "org.apache.spark.examples.SparkPi",
+						"--class", "com.chainmaker.DynamicDatabaseJob",
 						"--master", "k8s://https://kubernetes.default.svc",
 						"--deploy-mode", "cluster",
+						"--files", tlsCert,
 						"--conf", fmt.Sprintf("spark.executor.instances=2"),
-						"--conf", fmt.Sprintf("spark.kubernetes.container.image=spark:latest"),
 						"--conf", fmt.Sprintf("spark.datasource.jdbc.url=%s", jdbcUrl),
-						"local:///opt/spark/examples/jars/spark-examples_2.12-3.0.1.jar",
+						"local:///opt/spark/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar",
 					},
 					Env: []corev1.EnvVar{
 						{

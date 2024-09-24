@@ -7,6 +7,7 @@ import (
 	"data-service/config"
 	"data-service/database"
 	pb "data-service/generated/datasource"
+	pb2 "data-service/generated/ida"
 	"data-service/server/routes"
 	"data-service/utils"
 	"database/sql"
@@ -30,6 +31,46 @@ import (
 type Server struct {
 	logger *zap.SugaredLogger
 	pb.UnimplementedDataSourceServiceServer
+}
+
+func (s Server) WriteInternalData(g grpc.ClientStreamingServer[pb.WriterInternalDataRequest, pb.Response]) error {
+	conf := config.GetConfigMap()
+	dbType := utils.ConvertDBType(conf.InternalDBType)
+
+	for {
+		request, err := g.Recv()
+		if err != nil {
+			return err
+		}
+		info := &pb2.DBConnInfo{Host: conf.InternalDBHost,
+			Port:     conf.InternalDBPort,
+			Username: conf.InternalDBUser,
+			DbName:   request.DbName,
+			TlsCert:  conf.InternalTLSContent,
+		}
+		// 处理请求，拿取数据
+		reader := bytes.NewReader(request.ArrowBatch)
+		// 使用 Arrow 的内存分配器
+		pool := memory.NewGoAllocator()
+
+		// 使用 IPC 文件读取器解析数据
+		ipcReader, err := ipc.NewReader(reader, ipc.WithAllocator(pool))
+		if err != nil {
+			log.Fatalf("Failed to create Arrow IPC reader: %v", err)
+		}
+		defer ipcReader.Release()
+
+		// 获取表结构信息
+		schema := ipcReader.Schema()
+		dbStrategy, err := database.DatabaseFactory(dbType, info)
+		if err := dbStrategy.ConnectToDB(); err != nil {
+			return fmt.Errorf("failed to connect to database: %v", err)
+		}
+		db := database.GetDB(dbStrategy)
+		if err := insertArrowDataInBatches(db, request.GetTableName(), schema, ipcReader); err != nil {
+			return fmt.Errorf("failed to insert Arrow data: %v", err)
+		}
+	}
 }
 
 func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerStreamingServer[pb.ArrowResponse]) error {
@@ -103,10 +144,11 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 		return nil, fmt.Errorf("failed to create Kubernetes client: %v", err)
 	}
 
-	// 创建 Spark Pod，并将数据源信息作为环境变量传递
+	// 创建 Spark Pod
 	podName := "spark-job-" + requestId
-	// 创建 Pod
-	_, err = utils.CreateSparkPod(clientset, conf.SparkNamespace, podName, jdbcUrl)
+	// 本地生成tls cert文件
+	filePath, _ := utils.GenerateTLSFile(product_data_set)
+	_, err = utils.CreateSparkPod(clientset, conf.SparkNamespace, podName, jdbcUrl, filePath)
 	if err != nil {
 		s.logger.Fatalf("Failed to create Pod: %v", err)
 	}

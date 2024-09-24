@@ -23,6 +23,7 @@ const (
 	DataSourceService_ReadStreamingData_FullMethodName = "/datasource.DataSourceService/ReadStreamingData"
 	DataSourceService_SendArrowData_FullMethodName     = "/datasource.DataSourceService/SendArrowData"
 	DataSourceService_WriteOSSData_FullMethodName      = "/datasource.DataSourceService/WriteOSSData"
+	DataSourceService_WriteInternalData_FullMethodName = "/datasource.DataSourceService/WriteInternalData"
 )
 
 // DataSourceServiceClient is the client API for DataSourceService service.
@@ -39,6 +40,8 @@ type DataSourceServiceClient interface {
 	SendArrowData(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WrappedWriterDataRequest, Response], error)
 	// 写入OSS数据
 	WriteOSSData(ctx context.Context, in *OSSWriteRequest, opts ...grpc.CallOption) (*Response, error)
+	// 往内置数据库写入数据
+	WriteInternalData(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WriterInternalDataRequest, Response], error)
 }
 
 type dataSourceServiceClient struct {
@@ -101,6 +104,19 @@ func (c *dataSourceServiceClient) WriteOSSData(ctx context.Context, in *OSSWrite
 	return out, nil
 }
 
+func (c *dataSourceServiceClient) WriteInternalData(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WriterInternalDataRequest, Response], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &DataSourceService_ServiceDesc.Streams[2], DataSourceService_WriteInternalData_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WriterInternalDataRequest, Response]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataSourceService_WriteInternalDataClient = grpc.ClientStreamingClient[WriterInternalDataRequest, Response]
+
 // DataSourceServiceServer is the server API for DataSourceService service.
 // All implementations must embed UnimplementedDataSourceServiceServer
 // for forward compatibility.
@@ -115,6 +131,8 @@ type DataSourceServiceServer interface {
 	SendArrowData(grpc.ClientStreamingServer[WrappedWriterDataRequest, Response]) error
 	// 写入OSS数据
 	WriteOSSData(context.Context, *OSSWriteRequest) (*Response, error)
+	// 往内置数据库写入数据
+	WriteInternalData(grpc.ClientStreamingServer[WriterInternalDataRequest, Response]) error
 	mustEmbedUnimplementedDataSourceServiceServer()
 }
 
@@ -136,6 +154,9 @@ func (UnimplementedDataSourceServiceServer) SendArrowData(grpc.ClientStreamingSe
 }
 func (UnimplementedDataSourceServiceServer) WriteOSSData(context.Context, *OSSWriteRequest) (*Response, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WriteOSSData not implemented")
+}
+func (UnimplementedDataSourceServiceServer) WriteInternalData(grpc.ClientStreamingServer[WriterInternalDataRequest, Response]) error {
+	return status.Errorf(codes.Unimplemented, "method WriteInternalData not implemented")
 }
 func (UnimplementedDataSourceServiceServer) mustEmbedUnimplementedDataSourceServiceServer() {}
 func (UnimplementedDataSourceServiceServer) testEmbeddedByValue()                           {}
@@ -212,6 +233,13 @@ func _DataSourceService_WriteOSSData_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataSourceService_WriteInternalData_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(DataSourceServiceServer).WriteInternalData(&grpc.GenericServerStream[WriterInternalDataRequest, Response]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataSourceService_WriteInternalDataServer = grpc.ClientStreamingServer[WriterInternalDataRequest, Response]
+
 // DataSourceService_ServiceDesc is the grpc.ServiceDesc for DataSourceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -237,6 +265,11 @@ var DataSourceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SendArrowData",
 			Handler:       _DataSourceService_SendArrowData_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "WriteInternalData",
+			Handler:       _DataSourceService_WriteInternalData_Handler,
 			ClientStreams: true,
 		},
 	},

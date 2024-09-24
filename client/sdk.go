@@ -208,9 +208,25 @@ func (sdk *DataServiceClient) writeDBData(ctx context.Context, request *pb.Write
 }
 
 // 往内置数据库写数据
-/*func (sdk *DataServiceClient) writeInternalDBData(ctx context.Context, request *pb.WriterInternalDataRequest) *pb.Response {
-
-}*/
+func (sdk *DataServiceClient) writeInternalDBData(ctx context.Context, request *pb.WriterInternalDataRequest) *pb.Response {
+	stream, err := sdk.client.WriteInternalData(ctx)
+	if err != nil {
+		return &pb.Response{
+			Success: false,
+			Message: fmt.Sprintf("failed to create stream: %v", err),
+		}
+	}
+	if err := stream.Send(request); err != nil {
+		return &pb.Response{
+			Success: false,
+			Message: fmt.Sprintf("failed to send stream: %v", err),
+		}
+	}
+	return &pb.Response{
+		Success: true,
+		Message: fmt.Sprintf("success to write data: %v", err),
+	}
+}
 
 // 读内置数据库数据
 /*func (sdk *DataServiceClient) readInternalDBData(ctx context.Context, request *pb.ReadInternalDataRequest) *pb.Response {
