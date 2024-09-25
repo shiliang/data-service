@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"data-service/common"
+	"data-service/generated/datasource"
 	pb "data-service/generated/ida"
 	"database/sql"
 	"fmt"
@@ -83,6 +84,30 @@ func (m *MySQLStrategy) ConnectToDB() error {
 	}
 	m.DB = db
 	m.logger.Info("Successfully connected to MySQL")
+	return nil
+}
+
+func (m *MySQLStrategy) ConnectToDBWithPass(info *datasource.ConnectionInfo) error {
+	// 构造 MySQL DSN 数据源名称，包含用户名、密码和连接信息
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", info.User, info.Password, info.Host, info.Port, info.DbName)
+
+	// 打开数据库连接
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		m.logger.Errorf("Failed to connect to MySQL: %v", err)
+		return fmt.Errorf("failed to connect to MySQL: %v", err)
+	}
+
+	// 检查连接是否成功
+	err = db.Ping()
+	if err != nil {
+		m.logger.Errorf("Failed to ping MySQL: %v", err)
+		return fmt.Errorf("failed to ping MySQL: %v", err)
+	}
+
+	// 成功连接后，保存数据库实例
+	m.DB = db
+	m.logger.Info("Successfully connected to MySQL with username and password")
 	return nil
 }
 

@@ -11,46 +11,57 @@ package config
 
 import (
 	"context"
-	"encoding/json"
+	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"log"
+	"os"
 )
 
 type DataServiceConf struct {
-	IDAServerAddress   string `json:"IDAServerAddress"`
-	IDAServerPort      string `json:"IDAServerPort"`
-	OSSType            string `json:"OSSType"`
-	OSSEndpoint        string `json:"OSSEndpoint"`
-	AccessKeyID        string `json:"AccessKeyID"`
-	SecretAccessKey    string `json:"SecretAccessKey"`
-	UseSSL             bool   `json:"UseSSL"`
-	HttpPort           string `json:"HttpPort"`
-	SparkNamespace     string `json:"SparkNamespace"`
-	InternalDBType     string `json:"InternalDBType"`
-	InternalDBHost     string `json:"InternalDBHost"`
-	InternalDBPort     int32  `json:"InternalDBPort"`
-	InternalDBName     string `json:"InternalDBName"`
-	InternalDBUser     string `json:"InternalDBUser"`
-	InternalTLSContent string `json:"InternalTLSContent"`
+	OSSConfig         OSSConfig         `yaml:"oss"`
+	Dbms              DbmsConfig        `yaml:"dbms"`
+	HttpServiceConfig HttpServiceConfig `yaml:"http"`
+}
+
+type DbmsConfig struct {
+	Type         string `yaml:"type"`
+	Params       string `yaml:"params"`
+	Host         string `yaml:"host"`
+	Port         int32  `yaml:"port"`
+	User         string `yaml:"user"`
+	Password     string `yaml:"password"`
+	Database     string `yaml:"db"`
+	dsn          string `yaml:"dsn"`
+	MaxOpenConns int    `yaml:"max_open_conns"`
+	MaxIdleConns int    `yaml:"max_idle_conns"`
+}
+
+type OSSConfig struct {
+	Type      string `yaml:"type"`
+	Host      string `yaml:"host"`
+	Port      int32  `yaml:"port"`
+	AccessKey string `yaml:"access_key"`
+	SecretKey string `yaml:"secret_key"`
+}
+
+type HttpServiceConfig struct {
+	Port int32 `yaml:"port"`
 }
 
 func parseConfigMap(data map[string]string) *DataServiceConf {
 	config := &DataServiceConf{}
-	configData, ok := data["config.json"]
+	// 获取 YAML 数据
+	configData, ok := data["config.yaml"]
 	if ok {
-		err := json.Unmarshal([]byte(configData), &config)
+		// 使用 yaml.Unmarshal 解析 YAML
+		err := yaml.Unmarshal([]byte(configData), config)
 		if err != nil {
 			log.Fatal(err)
 		}
 	} else {
-		if idaServer, ok := data["IDAServerAddress"]; ok {
-			config.IDAServerAddress = idaServer
-		}
-		if idaServerPort, ok := data["IDAServerPort"]; ok {
-			config.IDAServerPort = idaServerPort
-		}
+		log.Println("config.yaml not found in the config map")
 	}
 	return config
 }
@@ -73,7 +84,9 @@ func GetConfigMap() *DataServiceConf {
 	}
 
 	// 获取 ConfigMap
-	configMap, err := clientset.CoreV1().ConfigMaps("your-namespace").Get(context.TODO(), "your-configmap-name", metav1.GetOptions{})
+	namespace := os.Getenv("POD_NAMESPACE")
+	configMapName := "mira-data-service-config"
+	configMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
 	if err != nil {
 		panic(err.Error())
 	}

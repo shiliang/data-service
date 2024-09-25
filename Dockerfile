@@ -25,4 +25,4 @@ FROM alpine:latest
 COPY --from=builder /home/workspace/dataserver /usr/local/bin/dataserver
 COPY --from=builder /home/workspace/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar /opt/spark/jars
 # 设置容器启动时运行的命令
-CMD ["dataserver"]
+# CMD ["dataserver"]

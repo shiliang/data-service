@@ -77,11 +77,14 @@ message StreamReadRequest {
 message ConnectionInfo {
   string dbtype = 1; //数据库类型
   string host = 2; // 数据库地址
-  string port = 3; // 数据库端口
-  string tableName = 4; // 数据库用户名
+  int32  port = 3; // 数据库端口
+  string tableName = 4; // 表名
   string tls_cert = 5; // TLS证书
   string tls_cert_name = 6; // TLS文件名
   string tls_cert_ext = 7; // TLS文件名扩展
+  string user = 8;
+  string password = 9;
+  string dbName = 10;
 }
 
 message ServerInfo {

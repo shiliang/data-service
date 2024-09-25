@@ -10,9 +10,11 @@
 package database
 
 import (
+	"data-service/generated/datasource"
 	pb "data-service/generated/ida"
 	"database/sql"
 	"fmt"
+	"github.com/apache/arrow/go/arrow/array"
 	"go.uber.org/zap"
 	"io/ioutil"
 	"os"
@@ -23,6 +25,16 @@ type KingbaseStrategy struct {
 	info   *pb.DBConnInfo
 	DB     *sql.DB
 	logger *zap.SugaredLogger
+}
+
+func (k *KingbaseStrategy) ConnectToDBWithPass(info *datasource.ConnectionInfo) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (k *KingbaseStrategy) RowsToArrowBatch(rows *sql.Rows) (array.Record, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func NewKingbaseStrategy(info *pb.DBConnInfo) *KingbaseStrategy {

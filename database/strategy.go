@@ -10,12 +10,16 @@
 package database
 
 import (
+	pb "data-service/generated/datasource"
 	"database/sql"
 	"github.com/apache/arrow/go/arrow/array"
 )
 
 type DatabaseStrategy interface {
 	ConnectToDB() error
+
+	// 使用密码连接数据库
+	ConnectToDBWithPass(info *pb.ConnectionInfo) error
 
 	/* 执行select，args为sql查询中的占位符
 	sqlQuery := "SELECT * FROM users WHERE age > ? AND city = ?"

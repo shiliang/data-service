@@ -7,7 +7,7 @@ import (
 	"data-service/config"
 	"data-service/database"
 	pb "data-service/generated/datasource"
-	pb2 "data-service/generated/ida"
+	"data-service/generated/ida"
 	"data-service/server/routes"
 	"data-service/utils"
 	"database/sql"
@@ -36,18 +36,23 @@ type Server struct {
 
 func (s Server) WriteInternalData(g grpc.ClientStreamingServer[pb.WriterInternalDataRequest, pb.Response]) error {
 	conf := config.GetConfigMap()
-	dbType := utils.ConvertDBType(conf.InternalDBType)
+	dbType := utils.ConvertDBType(conf.Dbms.Type)
 
 	for {
 		request, err := g.Recv()
 		if err != nil {
 			return err
 		}
-		info := &pb2.DBConnInfo{Host: conf.InternalDBHost,
-			Port:     conf.InternalDBPort,
-			Username: conf.InternalDBUser,
+		connInfo := &pb.ConnectionInfo{Host: conf.Dbms.Host,
+			Port:   conf.Dbms.Port,
+			User:   conf.Dbms.User,
+			DbName: request.DbName,
+		}
+		info := &ida.DBConnInfo{
 			DbName:   request.DbName,
-			TlsCert:  conf.InternalTLSContent,
+			Host:     conf.Dbms.Host,
+			Port:     conf.Dbms.Port,
+			Username: conf.Dbms.User,
 		}
 		// 处理请求，拿取数据
 		reader := bytes.NewReader(request.ArrowBatch)
@@ -64,7 +69,7 @@ func (s Server) WriteInternalData(g grpc.ClientStreamingServer[pb.WriterInternal
 		// 获取表结构信息
 		schema := ipcReader.Schema()
 		dbStrategy, err := database.DatabaseFactory(dbType, info)
-		if err := dbStrategy.ConnectToDB(); err != nil {
+		if err := dbStrategy.ConnectToDBWithPass(connInfo); err != nil {
 			return fmt.Errorf("failed to connect to database: %v", err)
 		}
 		db := database.GetDB(dbStrategy)
@@ -169,7 +174,6 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 	assetName := request.GetRequest().GetAssetName()
 	chainId := request.GetRequest().GetChainInfoId()
 	requestId := request.GetRequestId()
-	conf := config.GetConfigMap()
 	// 用资产名称取数据库连接信息
 	product_data_set := utils.GetDatasourceByAssetName(requestId, assetName, chainId)
 	dbType := utils.ConvertDataSourceType(product_data_set.GetDbConnInfo().GetType())
@@ -193,7 +197,7 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 	podName := "spark-job-" + requestId
 	// 本地生成tls cert文件
 	filePath, _ := utils.GenerateTLSFile(product_data_set)
-	_, err = utils.CreateSparkPod(clientset, conf.SparkNamespace, podName, jdbcUrl, filePath)
+	_, err = utils.CreateSparkPod(clientset, "spark", podName, jdbcUrl, filePath)
 	if err != nil {
 		s.logger.Fatalf("Failed to create Pod: %v", err)
 	}
@@ -206,10 +210,11 @@ func (s Server) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (
 	conf := config.GetConfigMap()
 	var err interface{}
 	var client *minio.Client
-	if conf.OSSType == "minio" {
+	if conf.OSSConfig.Type == "minio" {
 		// 创建 MinIO 客户端
-		client, err = minio.New(conf.OSSEndpoint, &minio.Options{
-			Creds:  credentials.NewStaticV4(conf.AccessKeyID, conf.SecretAccessKey, ""),
+		endpoint := fmt.Sprintf("%s:%d", conf.OSSConfig.Host, conf.OSSConfig.Port)
+		client, err = minio.New(endpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(conf.OSSConfig.AccessKey, conf.OSSConfig.SecretKey, ""),
 			Secure: false,
 		})
 		if err != nil {
@@ -342,8 +347,8 @@ func main() {
 	routes.RegisterRoutes()
 	// 启动HTTP服务器
 	conf := config.GetConfigMap()
-	sugaredLogger.Infof("HTTP server running at %s", conf.HttpPort)
-	if err = http.ListenAndServe(":"+conf.HttpPort, nil); err != nil {
+	sugaredLogger.Infof("HTTP server running at %s", conf.HttpServiceConfig.Port)
+	if err = http.ListenAndServe(":"+fmt.Sprintf("%d", conf.HttpServiceConfig.Port), nil); err != nil {
 		sugaredLogger.Fatalf("failed to serve: %v", err)
 	}
 }

@@ -11,7 +11,6 @@ package utils
 
 import (
 	"context"
-	config2 "data-service/config"
 	pb2 "data-service/generated/datasource"
 	pb "data-service/generated/ida"
 	"fmt"
@@ -21,8 +20,9 @@ import (
 )
 
 func GetDatasourceByAssetName(requestId string, assetName string, chainId int32) *pb.DataSetInfo {
-	config := config2.GetConfigMap()
-	idaAddress := config.IDAServerAddress + ":" + config.IDAServerPort
+	IDAServerAddress := os.Getenv("IDA_MANAGE_HOST")
+	IDAServerPort := os.Getenv("IDA_MANAGE_PORT")
+	idaAddress := IDAServerAddress + ":" + IDAServerPort
 	conn, err := grpc.Dial(idaAddress, grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
