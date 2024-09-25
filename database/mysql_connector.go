@@ -16,6 +16,9 @@ import (
 	pb "data-service/generated/ida"
 	"database/sql"
 	"fmt"
+	"github.com/apache/arrow/go/arrow"
+	"github.com/apache/arrow/go/arrow/array"
+	"github.com/apache/arrow/go/arrow/memory"
 	"github.com/go-sql-driver/mysql"
 	"go.uber.org/zap"
 )
@@ -127,4 +130,88 @@ func (m *MySQLStrategy) GetJdbcUrl() (string, error) {
 		common.MYSQL_TLS_CONFIG,
 	)
 	return jdbcUrl, nil
+}
+
+func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (array.Record, error) {
+	if rows == nil {
+		return nil, fmt.Errorf("no rows to convert")
+	}
+
+	// 创建内存分配器
+	pool := memory.NewGoAllocator()
+
+	// 获取列名
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get columns: %v", err)
+	}
+
+	// 获取每列的类型
+	colTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get column types: %v", err)
+	}
+
+	// 构建 Arrow Schema
+	var fields []arrow.Field
+	for i, col := range cols {
+		arrowType, err := sqlTypeToArrowType(colTypes[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert SQL type to Arrow type: %v", err)
+		}
+		fields = append(fields, arrow.Field{Name: col, Type: arrowType})
+	}
+	schema := arrow.NewSchema(fields, nil)
+
+	// 创建 Arrow RecordBuilder
+	builder := array.NewRecordBuilder(pool, schema)
+	defer builder.Release()
+
+	// 准备存储行数据的容器
+	values := make([]interface{}, len(cols))
+	valuePtrs := make([]interface{}, len(cols))
+	for i := range valuePtrs {
+		valuePtrs[i] = &values[i]
+	}
+
+	// 遍历 rows 并填充 Arrow Builder
+	for rows.Next() {
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %v", err)
+		}
+
+		// 将值添加到 Arrow Builder 中
+		for i, val := range values {
+			switch builder.Field(i).(type) {
+			case *array.StringBuilder:
+				strValue := fmt.Sprintf("%v", val)
+				builder.Field(i).(*array.StringBuilder).Append(strValue)
+			case *array.Int64Builder:
+				intValue, ok := val.(int64)
+				if ok {
+					builder.Field(i).(*array.Int64Builder).Append(intValue)
+				}
+				// 其他类型转换根据实际需求处理
+			}
+		}
+	}
+
+	// 创建 Arrow 批次 (Record)
+	record := builder.NewRecord()
+	return record, nil
+}
+
+// 将 SQL 列类型转换为 Arrow 类型
+func sqlTypeToArrowType(colType *sql.ColumnType) (arrow.DataType, error) {
+	switch colType.DatabaseTypeName() {
+	case "VARCHAR", "TEXT", "CHAR":
+		return arrow.BinaryTypes.String, nil
+	case "INT", "BIGINT":
+		return arrow.PrimitiveTypes.Int64, nil
+	case "FLOAT", "DOUBLE", "DECIMAL":
+		return arrow.PrimitiveTypes.Float64, nil
+	// 处理其他类型
+	default:
+		return nil, fmt.Errorf("unsupported column type: %s", colType.DatabaseTypeName())
+	}
 }

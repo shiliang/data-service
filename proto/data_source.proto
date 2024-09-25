@@ -16,6 +16,7 @@ service DataSourceService {
   rpc WriteOSSData(OSSWriteRequest) returns (Response);
   // 往内置数据库写入数据
   rpc WriteInternalData(stream WriterInternalDataRequest) returns (Response);
+  // 从内置数据库读取数据
 }
 
 

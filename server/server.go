@@ -19,6 +19,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"io"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"log"
@@ -74,8 +75,52 @@ func (s Server) WriteInternalData(g grpc.ClientStreamingServer[pb.WriterInternal
 }
 
 func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerStreamingServer[pb.ArrowResponse]) error {
-	//TODO implement me
-	panic("implement me")
+	// 解析客户端请求参数
+	// 获取要连接的数据库信息
+	product_data_set := utils.GetDatasourceByAssetName(request.GetRequestId(), request.AssetName,
+		request.ChainInfoId)
+	dbType := utils.ConvertDataSourceType(product_data_set.GetDbConnInfo().GetType())
+	// 从数据源中读取arrow数据流
+	dbStrategy, _ := database.DatabaseFactory(dbType, product_data_set.DbConnInfo)
+	if err := dbStrategy.ConnectToDB(); err != nil {
+		return fmt.Errorf("failed to connect to database: %v", err)
+	}
+	// 拼接sql，执行数据库查询
+	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(request.DbFields, ","), product_data_set.TableName)
+	rows, err := dbStrategy.Query(query)
+	if err != nil {
+		return fmt.Errorf("error executing query: %v", err)
+	}
+	// 返回arrow流
+	for {
+		// 读取 Arrow 批次
+		record, err := dbStrategy.RowsToArrowBatch(rows)
+		if err == io.EOF {
+			break // 没有更多数据
+		}
+		if err != nil {
+			return fmt.Errorf("error reading Arrow batch: %v", err)
+		}
+
+		// 使用 IPC Writer 将 Arrow 批次序列化为字节流
+		var buf bytes.Buffer
+		writer := ipc.NewWriter(&buf, ipc.WithSchema(record.Schema()))
+		if err := writer.Write(record); err != nil {
+			return fmt.Errorf("failed to write record: %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			return fmt.Errorf("failed to close writer: %v", err)
+		}
+
+		// 发送 ArrowResponse 给客户端
+		response := &pb.ArrowResponse{
+			ArrowBatch: buf.Bytes(),
+		}
+		if err := g.Send(response); err != nil {
+			return fmt.Errorf("failed to send response: %v", err)
+		}
+	}
+	return nil
 }
 
 func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WrappedWriterDataRequest, pb.Response]) error {
