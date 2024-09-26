@@ -19,10 +19,12 @@ RUN go build -o dataserver ./server/server.go
 
 RUN mkdir -p /opt/spark/jars
 # 使用轻量级镜像运行编译后的文件
-FROM alpine:latest
-
+#FROM alpine:latest
+FROM ubuntu:latest
 # 将编译的二进制文件从 builder 镜像复制到当前镜像
-COPY --from=builder /home/workspace/dataserver /usr/local/bin/dataserver
-COPY --from=builder /home/workspace/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar /opt/spark/jars
+COPY --from=builder /home/workspace/dataserver /usr/local/bin/
+COPY --from=builder /home/workspace/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar /opt/spark/jars/
+COPY --from=builder /home/workspace/start.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/start.sh
 # 设置容器启动时运行的命令
-# CMD ["dataserver"]
+CMD /usr/local/bin/start.sh
