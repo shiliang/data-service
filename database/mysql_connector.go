@@ -12,15 +12,15 @@ package database
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"data-service/common"
-	"data-service/generated/datasource"
-	pb "data-service/generated/ida"
 	"database/sql"
 	"fmt"
 	"github.com/apache/arrow/go/arrow"
 	"github.com/apache/arrow/go/arrow/array"
 	"github.com/apache/arrow/go/arrow/memory"
 	"github.com/go-sql-driver/mysql"
+	"github.com/shiliang/data-service/common"
+	"github.com/shiliang/data-service/generated/datasource"
+	pb "github.com/shiliang/data-service/generated/ida"
 	"go.uber.org/zap"
 )
 

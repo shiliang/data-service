@@ -3,13 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"data-service/common"
-	"data-service/config"
-	"data-service/database"
-	pb "data-service/generated/datasource"
-	"data-service/generated/ida"
-	"data-service/server/routes"
-	"data-service/utils"
 	"database/sql"
 	"fmt"
 	"github.com/apache/arrow/go/arrow"
@@ -17,7 +10,15 @@ import (
 	"github.com/apache/arrow/go/arrow/memory"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/shiliang/data-service/common"
+	"github.com/shiliang/data-service/config"
+	"github.com/shiliang/data-service/database"
+	pb "github.com/shiliang/data-service/generated/datasource"
+	"github.com/shiliang/data-service/generated/ida"
+	"github.com/shiliang/data-service/server/routes"
+	"github.com/shiliang/data-service/utils"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"io"
 	"k8s.io/client-go/kubernetes"
@@ -326,9 +327,27 @@ func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema
 
 func main() {
 	// 初始化 logger
-	logger, _ := zap.NewProduction() // 使用生产环境配置，或者你可以使用 zap.NewDevelopment()
+	if err := os.MkdirAll("./logs", os.ModePerm); err != nil {
+		zap.S().Fatalw("failed to create log directory", zap.Error(err))
+	}
+	// 配置 Zap 日志器
+	cfg := zap.Config{
+		Level:       zap.NewAtomicLevelAt(zap.DebugLevel),
+		Development: true,
+		Encoding:    "json",
+		OutputPaths: []string{"stdout", "./logs/app.log"},
+		EncoderConfig: zapcore.EncoderConfig{
+			MessageKey: "msg",
+		},
+	}
+
+	logger, err := cfg.Build()
+	if err != nil {
+		zap.S().Fatalw("failed to build zap logger", zap.Error(err))
+	}
+
+	// 创建 SugaredLogger
 	sugaredLogger := logger.Sugar()
-	defer logger.Sync()
 
 	listen, err := net.Listen("tcp", ":8580")
 	if err != nil {

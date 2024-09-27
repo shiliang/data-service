@@ -10,10 +10,10 @@
 package database
 
 import (
-	pb "data-service/generated/datasource"
-	ida "data-service/generated/ida"
 	"database/sql"
 	"errors"
+	pb "github.com/shiliang/data-service/generated/datasource"
+	ida "github.com/shiliang/data-service/generated/ida"
 )
 
 // DatabaseFactory creates a database strategy based on the database type

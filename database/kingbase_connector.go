@@ -10,11 +10,11 @@
 package database
 
 import (
-	"data-service/generated/datasource"
-	pb "data-service/generated/ida"
 	"database/sql"
 	"fmt"
 	"github.com/apache/arrow/go/arrow/array"
+	"github.com/shiliang/data-service/generated/datasource"
+	pb "github.com/shiliang/data-service/generated/ida"
 	"go.uber.org/zap"
 	"io/ioutil"
 	"os"

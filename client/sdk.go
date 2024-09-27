@@ -9,10 +9,10 @@ package client
 
 import (
 	"context"
-	pb "data-service/generated/datasource"
-	"data-service/utils"
 	"fmt"
 	"github.com/google/uuid"
+	pb "github.com/shiliang/data-service/generated/datasource"
+	"github.com/shiliang/data-service/utils"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"io"

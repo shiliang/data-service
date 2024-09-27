@@ -1,6 +1,6 @@
 echo "start data service"
 
-nohup /usr/local/bin/dataserver &
+nohup /home/workspace/bin/dataserver &
 
 echo "finish"
 
@@ -9,7 +9,7 @@ while true; do
   echo $time && echo "do while for docker daemon"
   sleep 300
 
-  if ps -ef | grep -v grep | grep "/usr/local/bin/dataserver" > /dev/null
+  if ps -ef | grep -v grep | grep "/home/workspace/bin/dataserver" > /dev/null
   then
       echo "data service is running."
   else
