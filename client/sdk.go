@@ -58,10 +58,6 @@ func NewDataServiceClient(ctx context.Context, serverInfo *pb.ServerInfo) (*Data
 	}, nil
 }
 
-func (sdk *DataServiceClient) SetClient(client pb.DataSourceServiceClient) {
-	sdk.client = client
-}
-
 /**
  * @Description 从服务端读取apache arrow的数据
  * @Param
@@ -208,7 +204,7 @@ func (sdk *DataServiceClient) writeDBData(ctx context.Context, request *pb.Write
 }
 
 // 往内置数据库写数据
-func (sdk *DataServiceClient) writeInternalDBData(ctx context.Context, request *pb.WriterInternalDataRequest) *pb.Response {
+func (sdk *DataServiceClient) WriteInternalDBData(ctx context.Context, request *pb.WriterInternalDataRequest) *pb.Response {
 	stream, err := sdk.client.WriteInternalData(ctx)
 	if err != nil {
 		return &pb.Response{
