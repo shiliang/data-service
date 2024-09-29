@@ -364,7 +364,7 @@ func main() {
 
 	// 注册路由
 	routes.RegisterRoutes()
-	// 启动HTTP服务器
+	// 启动HTTP服务器22222
 	conf := config.GetConfigMap()
 	sugaredLogger.Infof("HTTP server running at %s", conf.HttpServiceConfig.Port)
 	if err = http.ListenAndServe(":"+fmt.Sprintf("%d", conf.HttpServiceConfig.Port), nil); err != nil {
