@@ -277,19 +277,8 @@ func (s Server) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (
 
 // 使用事务批量插入Arrow数据到数据库
 func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema, ipcReader *ipc.Reader) error {
-	// 1. 拼接 INSERT INTO 的前半部分
-	columns := []string{}
-	placeholders := []string{}
-	for _, field := range schema.Fields() {
-		columns = append(columns, field.Name)
-		placeholders = append(placeholders, "?")
-	}
 
-	insertSQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName,
-		strings.Join(columns, ", "),
-		strings.Join(placeholders, ", "))
-
-	// 2. 开始事务
+	// 开始事务
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %v", err)
@@ -298,7 +287,6 @@ func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema
 	// 3. 批量插入数据
 	argsBatch := []interface{}{}
 	rowCount := int64(0)
-
 	for ipcReader.Next() {
 		record := ipcReader.Record()
 		if record == nil || record.NumRows() == 0 {
@@ -311,12 +299,12 @@ func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema
 			return err
 		}
 		argsBatch = append(argsBatch, args...)
-
-		rowCount += record.NumRows() // 更新行计数，
+		rowCount += record.NumRows() // 更新行计数
 
 		// 当达到 batchSize 时，执行批量插入
 		if rowCount >= common.BATCH_DATA_SIZE {
-			_, err := tx.Exec(insertSQL, argsBatch...)
+			insertSQL, err := utils.GenerateInsertSQL(tableName, argsBatch, schema)
+			_, err = tx.Exec(insertSQL, argsBatch...)
 			if err != nil {
 				tx.Rollback()
 				return fmt.Errorf("failed to execute batch insert: %v", err)
@@ -328,7 +316,8 @@ func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema
 
 	// 如果最后一批数据未达到 batchSize，需要手动插入
 	if rowCount > 0 && len(argsBatch) > 0 {
-		_, err := tx.Exec(insertSQL, argsBatch...)
+		insertSQL, err := utils.GenerateInsertSQL(tableName, argsBatch, schema)
+		_, err = tx.Exec(insertSQL, argsBatch...)
 		if err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to execute final batch insert: %v", err)

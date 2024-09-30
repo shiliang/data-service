@@ -97,3 +97,37 @@ func ExtractRowData(record arrow.Record) ([]interface{}, error) {
 	}
 	return argsBatch, nil
 }
+
+// GenerateInsertSQL 生成 SQL 插入语句
+func GenerateInsertSQL(tableName string, rowData []interface{}, schema *arrow.Schema) (string, error) {
+	numCols := schema.NumFields()
+	if len(rowData)%numCols != 0 {
+		return "", fmt.Errorf("row data length (%d) does not match schema length (%d)", len(rowData), numCols)
+	}
+
+	// 构建列名
+	var columns []string
+	for i := 0; i < numCols; i++ {
+		columns = append(columns, schema.Field(i).Name)
+	}
+	columnsStr := strings.Join(columns, ", ")
+
+	// 构建占位符与插入值
+	var placeholders []string
+	var values []string
+	rowCount := len(rowData) / numCols
+	for rowIdx := 0; rowIdx < rowCount; rowIdx++ {
+		var singleRowPlaceholders []string
+		for colIdx := 0; colIdx < numCols; colIdx++ {
+			singleRowPlaceholders = append(singleRowPlaceholders, "?")
+			values = append(values, fmt.Sprintf("%v", rowData[rowIdx*numCols+colIdx]))
+		}
+		placeholders = append(placeholders, fmt.Sprintf("(%s)", strings.Join(singleRowPlaceholders, ", ")))
+	}
+
+	placeholdersStr := strings.Join(placeholders, ", ")
+
+	// 构建 SQL 语句
+	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES %s", tableName, columnsStr, placeholdersStr)
+	return sql, nil
+}
