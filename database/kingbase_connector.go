@@ -13,8 +13,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/apache/arrow/go/arrow/array"
-	"github.com/shiliang/data-service/generated/datasource"
-	pb "github.com/shiliang/data-service/generated/ida"
+	ds "github.com/shiliang/data-service/generated/datasource"
 	"go.uber.org/zap"
 	"io/ioutil"
 	"os"
@@ -22,12 +21,12 @@ import (
 
 // KingbaseStrategy is a struct that implements DatabaseStrategy for Kingbase database
 type KingbaseStrategy struct {
-	info   *pb.DBConnInfo
+	info   *ds.ConnectionInfo
 	DB     *sql.DB
 	logger *zap.SugaredLogger
 }
 
-func (k *KingbaseStrategy) ConnectToDBWithPass(info *datasource.ConnectionInfo) error {
+func (k *KingbaseStrategy) ConnectToDBWithPass(info *ds.ConnectionInfo) error {
 	//TODO implement me
 	panic("implement me")
 }
@@ -37,7 +36,7 @@ func (k *KingbaseStrategy) RowsToArrowBatch(rows *sql.Rows) (array.Record, error
 	panic("implement me")
 }
 
-func NewKingbaseStrategy(info *pb.DBConnInfo) *KingbaseStrategy {
+func NewKingbaseStrategy(info *ds.ConnectionInfo) *KingbaseStrategy {
 	logger, _ := zap.NewDevelopment()
 	sugar := logger.Sugar()
 
@@ -84,7 +83,7 @@ func (k *KingbaseStrategy) ConnectToDB() error {
 	// 使用 PostgreSQL 驱动的标准 DSN 格式，并通过 sslrootcert 引用证书文件
 	sslmode := "verify-full"
 	dsn := fmt.Sprintf("postgres://%s@%s:%d/%s?sslmode=%s&sslrootcert=%s",
-		k.info.Username, k.info.Host, k.info.Port, k.info.DbName, sslmode, certPath)
+		k.info.User, k.info.Host, k.info.Port, k.info.DbName, sslmode, certPath)
 
 	// 打开数据库连接
 	db, err := sql.Open("postgres", dsn)

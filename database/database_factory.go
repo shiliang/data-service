@@ -13,11 +13,10 @@ import (
 	"database/sql"
 	"errors"
 	pb "github.com/shiliang/data-service/generated/datasource"
-	ida "github.com/shiliang/data-service/generated/ida"
 )
 
 // DatabaseFactory creates a database strategy based on the database type
-func DatabaseFactory(dbType pb.DataSourceType, info *ida.DBConnInfo) (DatabaseStrategy, error) {
+func DatabaseFactory(dbType pb.DataSourceType, info *pb.ConnectionInfo) (DatabaseStrategy, error) {
 	switch dbType {
 	case pb.DataSourceType_DATA_SOURCE_TYPE_KINGBASE:
 		return NewKingbaseStrategy(info), nil

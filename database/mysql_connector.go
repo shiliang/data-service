@@ -19,18 +19,17 @@ import (
 	"github.com/apache/arrow/go/arrow/memory"
 	"github.com/go-sql-driver/mysql"
 	"github.com/shiliang/data-service/common"
-	"github.com/shiliang/data-service/generated/datasource"
-	pb "github.com/shiliang/data-service/generated/ida"
+	ds "github.com/shiliang/data-service/generated/datasource"
 	"go.uber.org/zap"
 )
 
 type MySQLStrategy struct {
-	info   *pb.DBConnInfo
+	info   *ds.ConnectionInfo
 	DB     *sql.DB
 	logger *zap.SugaredLogger
 }
 
-func NewMySQLStrategy(info *pb.DBConnInfo) *MySQLStrategy {
+func NewMySQLStrategy(info *ds.ConnectionInfo) *MySQLStrategy {
 	logger, _ := zap.NewDevelopment()
 	sugar := logger.Sugar()
 
@@ -67,7 +66,7 @@ func (m *MySQLStrategy) ConnectToDB() error {
 		m.logger.Fatalf("Failed to setup TLS: %v", err)
 		return fmt.Errorf("failed to setup TLS: %v", err)
 	}
-	dsn := fmt.Sprintf("%s@tcp(%s:%d)/%s?tls=%s", m.info.Username, m.info.Host, m.info.Port,
+	dsn := fmt.Sprintf("%s@tcp(%s:%d)/%s?tls=%s", m.info.User, m.info.Host, m.info.Port,
 		m.info.DbName, common.MYSQL_TLS_CONFIG)
 	// 打开数据库连接
 	db, err := sql.Open("mysql", dsn)
@@ -87,7 +86,7 @@ func (m *MySQLStrategy) ConnectToDB() error {
 	return nil
 }
 
-func (m *MySQLStrategy) ConnectToDBWithPass(info *datasource.ConnectionInfo) error {
+func (m *MySQLStrategy) ConnectToDBWithPass(info *ds.ConnectionInfo) error {
 	// 构造 MySQL DSN 数据源名称，包含用户名、密码和连接信息
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", info.User, info.Password, info.Host, info.Port, info.DbName)
 
@@ -96,13 +95,6 @@ func (m *MySQLStrategy) ConnectToDBWithPass(info *datasource.ConnectionInfo) err
 	if err != nil {
 		m.logger.Errorf("Failed to connect to MySQL: %v", err)
 		return fmt.Errorf("failed to connect to MySQL: %v", err)
-	}
-
-	// 检查连接是否成功
-	err = db.Ping()
-	if err != nil {
-		m.logger.Errorf("Failed to ping MySQL: %v", err)
-		return fmt.Errorf("failed to ping MySQL: %v", err)
 	}
 
 	// 成功连接后，保存数据库实例

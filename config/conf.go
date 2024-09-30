@@ -10,13 +10,9 @@
 package config
 
 import (
-	"context"
 	"gopkg.in/yaml.v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"io/ioutil"
 	"log"
-	"os"
 )
 
 type DataServiceConf struct {
@@ -50,18 +46,17 @@ type HttpServiceConfig struct {
 	Port int32 `yaml:"port"`
 }
 
-func parseConfigMap(data map[string]string) *DataServiceConf {
+func parseConfigMap() *DataServiceConf {
 	config := &DataServiceConf{}
-	// 获取 YAML 数据
-	configData, ok := data["config.yaml"]
-	if ok {
-		// 使用 yaml.Unmarshal 解析 YAML
-		err := yaml.Unmarshal([]byte(configData), config)
-		if err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		log.Println("config.yaml not found in the config map")
+	configData, err := ioutil.ReadFile("../config/config.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// 使用 yaml.Unmarshal 解析 YAML
+	err = yaml.Unmarshal(configData, config)
+	if err != nil {
+		log.Fatal(err)
 	}
 	return config
 }
@@ -72,23 +67,5 @@ func parseConfigMap(data map[string]string) *DataServiceConf {
  * @return configMap
  **/
 func GetConfigMap() *DataServiceConf {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		panic(err.Error())
-	}
-
-	// 创建客户端
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	// 获取 ConfigMap
-	namespace := os.Getenv("POD_NAMESPACE")
-	configMapName := "mira-data-service-config"
-	configMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
-	if err != nil {
-		panic(err.Error())
-	}
-	return parseConfigMap(configMap.Data)
+	return parseConfigMap()
 }
