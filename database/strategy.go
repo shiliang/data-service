@@ -11,7 +11,7 @@ package database
 
 import (
 	"database/sql"
-	"github.com/apache/arrow/go/arrow/array"
+	"github.com/apache/arrow/go/v15/arrow"
 	pb "github.com/shiliang/data-service/generated/datasource"
 )
 
@@ -33,5 +33,5 @@ type DatabaseStrategy interface {
 
 	GetJdbcUrl() (string, error)
 
-	RowsToArrowBatch(rows *sql.Rows) (array.Record, error)
+	RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error)
 }

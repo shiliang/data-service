@@ -12,7 +12,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"github.com/apache/arrow/go/arrow/array"
+	"github.com/apache/arrow/go/v15/arrow"
 	ds "github.com/shiliang/data-service/generated/datasource"
 	"go.uber.org/zap"
 	"io/ioutil"
@@ -26,12 +26,12 @@ type KingbaseStrategy struct {
 	logger *zap.SugaredLogger
 }
 
-func (k *KingbaseStrategy) ConnectToDBWithPass(info *ds.ConnectionInfo) error {
+func (k *KingbaseStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (k *KingbaseStrategy) RowsToArrowBatch(rows *sql.Rows) (array.Record, error) {
+func (k *KingbaseStrategy) ConnectToDBWithPass(info *ds.ConnectionInfo) error {
 	//TODO implement me
 	panic("implement me")
 }

@@ -2,6 +2,9 @@ package utils
 
 import (
 	"errors"
+	"fmt"
+	"github.com/apache/arrow/go/v15/arrow"
+	"github.com/apache/arrow/go/v15/arrow/array"
 	"strings"
 )
 
@@ -54,4 +57,43 @@ func ParseMySQL(dsn string) (*ConnectionInfo, error) {
 		IP:       ip,
 		Port:     port,
 	}, nil
+}
+
+// columnValue 从 arrow.Array 中获取相应的值
+func ColumnValue(column arrow.Array) (interface{}, error) {
+	switch column.DataType().ID() {
+	case arrow.INT32:
+		return column.(*array.Int32).Value(0), nil
+	case arrow.STRING:
+		return column.(*array.String).Value(0), nil
+	default:
+		return nil, fmt.Errorf("unsupported column type: %v", column.DataType().ID())
+	}
+}
+
+func ExtractRowData(record arrow.Record) ([]interface{}, error) {
+	argsBatch := []interface{}{}
+	numRows := record.NumRows() // 获取行数
+
+	for rowIdx := int64(0); rowIdx < numRows; rowIdx++ { // 使用 int64
+		for colIdx := 0; colIdx < int(record.NumCols()); colIdx++ {
+			column := record.Column(colIdx)
+			var value interface{}
+
+			switch column.DataType().ID() {
+			case arrow.INT32:
+				int32Array := column.(*array.Int32)
+				value = int32Array.Value(int(rowIdx)) // 转换为 int
+			case arrow.STRING:
+				stringArray := column.(*array.String)
+				value = stringArray.Value(int(rowIdx)) // 转换为 int
+			// 可以根据需要添加更多类型的支持
+			default:
+				return nil, fmt.Errorf("unsupported column type: %v", column.DataType().ID())
+			}
+
+			argsBatch = append(argsBatch, value)
+		}
+	}
+	return argsBatch, nil
 }

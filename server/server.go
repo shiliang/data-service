@@ -5,9 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/apache/arrow/go/arrow"
-	"github.com/apache/arrow/go/arrow/ipc"
-	"github.com/apache/arrow/go/arrow/memory"
+	"github.com/apache/arrow/go/v15/arrow"
+	"github.com/apache/arrow/go/v15/arrow/ipc"
+	"github.com/apache/arrow/go/v15/arrow/memory"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/shiliang/data-service/common"
@@ -297,36 +297,37 @@ func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema
 
 	// 3. 批量插入数据
 	argsBatch := []interface{}{}
-	rowCount := 0
+	rowCount := int64(0)
 
 	for ipcReader.Next() {
 		record := ipcReader.Record()
+		if record == nil || record.NumRows() == 0 {
+			continue // 跳过空记录
+		}
 
-		// 遍历每一列，提取行数据
-		for rowIdx := 0; rowIdx < int(record.NumRows()); rowIdx++ {
-			for colIdx := 0; colIdx < int(record.NumCols()); colIdx++ {
-				column := record.Column(colIdx)
-				value := column.Data()
-				argsBatch = append(argsBatch, value)
-			}
-			rowCount++
+		args, err := utils.ExtractRowData(record)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		argsBatch = append(argsBatch, args...)
 
-			// 当达到 batchSize 时，执行批量插入
-			if rowCount >= common.BATCH_DATA_SIZE {
-				_, err := tx.Exec(insertSQL, argsBatch...)
-				if err != nil {
-					tx.Rollback()
-					return fmt.Errorf("failed to execute batch insert: %v", err)
-				}
-				// 清空批次数据
-				argsBatch = []interface{}{}
-				rowCount = 0
+		rowCount += record.NumRows() // 更新行计数，
+
+		// 当达到 batchSize 时，执行批量插入
+		if rowCount >= common.BATCH_DATA_SIZE {
+			_, err := tx.Exec(insertSQL, argsBatch...)
+			if err != nil {
+				tx.Rollback()
+				return fmt.Errorf("failed to execute batch insert: %v", err)
 			}
+			argsBatch = []interface{}{} // 清空批次数据
+			rowCount = 0
 		}
 	}
 
 	// 如果最后一批数据未达到 batchSize，需要手动插入
-	if rowCount > 0 {
+	if rowCount > 0 && len(argsBatch) > 0 {
 		_, err := tx.Exec(insertSQL, argsBatch...)
 		if err != nil {
 			tx.Rollback()

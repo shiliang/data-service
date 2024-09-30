@@ -14,9 +14,9 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"fmt"
-	"github.com/apache/arrow/go/arrow"
-	"github.com/apache/arrow/go/arrow/array"
-	"github.com/apache/arrow/go/arrow/memory"
+	"github.com/apache/arrow/go/v15/arrow"
+	"github.com/apache/arrow/go/v15/arrow/array"
+	"github.com/apache/arrow/go/v15/arrow/memory"
 	"github.com/go-sql-driver/mysql"
 	"github.com/shiliang/data-service/common"
 	ds "github.com/shiliang/data-service/generated/datasource"
@@ -149,7 +149,7 @@ func (m *MySQLStrategy) GetJdbcUrl() (string, error) {
 	return jdbcUrl, nil
 }
 
-func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (array.Record, error) {
+func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
 	if rows == nil {
 		return nil, fmt.Errorf("no rows to convert")
 	}
