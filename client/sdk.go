@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 )
 
 type DataServiceClient struct {
@@ -60,31 +61,60 @@ func NewDataServiceClient(ctx context.Context, serverInfo *pb.ServerInfo) (*Data
 
 /**
  * @Description 从服务端读取apache arrow的数据
- * @Param
+ * @Param 异步请求，返回值是channel，通过<-channel来获取请求，调用方再另起一个协程 go xxx(c <-chan T, wg *sync.WaitGroup)
  * @return
  **/
-func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.BatchReadRequest) (*pb.Response, error) {
+func (sdk *DataServiceClient) ReadBatchData(ctx context.Context, request *pb.BatchReadRequest) <-chan *pb.Response {
 	wrappedRequest := &pb.WrappedReadRequest{
 		Request:   request,
 		RequestId: uuid.New().String(),
 	}
-	// 调用服务端ReadData方法
-	response, err := sdk.client.ReadBatchData(ctx, wrappedRequest)
-	if err == nil {
-		return nil, fmt.Errorf("failed to read data: %w", err)
+	responseChan := make(chan *pb.Response, 1)
+	go func() {
+		defer close(responseChan)
+		// 调用服务端ReadData方法
+		response, err := sdk.client.ReadBatchData(ctx, wrappedRequest)
+		if err == nil {
+			responseChan <- &pb.Response{
+				Success: false,
+				Message: fmt.Sprintf("success to read data: %v", err),
+			}
+			return
+		}
+		// 读取的数据文件写入到minio中，需要下载到本地
+		err = DownloadFile(response.GetObjectUrl(), request.GetFilePath())
+		if err != nil {
+			responseChan <- &pb.Response{
+				Success: false,
+				Message: fmt.Sprintf("Failed to read data: %v", err),
+			}
+			return
+		}
+		responseChan <- &pb.Response{
+			Success: true,
+			Message: fmt.Sprintf("success to read and download data."),
+		}
+	}()
+	return responseChan
+}
+
+// ProcessResponse 处理批量读函数的响应。
+// 该函数从一个通道中读取响应消息，并根据消息的成功与否打印不同的信息。
+// 参数:
+//
+//	c: 一个接收*pb.Response类型的通道，用于传入从数据服务接收到的响应。
+//	wg: *sync.WaitGroup类型，用于通知等待该函数完成的其他goroutine。
+func (sdk *DataServiceClient) ProcessResponse(c <-chan *pb.Response, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// 等待channel中的响应数据
+	for response := range c {
+		if response.Success {
+			fmt.Println("Operation successful:", response.Message)
+		} else {
+			fmt.Println("Operation failed:", response.Message)
+		}
 	}
-	// 读取的数据文件写入到minio中，需要下载到本地
-	err = DownloadFile(response.GetObjectUrl(), request.GetFilePath())
-	if err != nil {
-		return &pb.Response{
-			Success: false,
-			Message: fmt.Sprintf("Failed to read data: %v", err),
-		}, nil
-	}
-	return &pb.Response{
-		Success: true,
-		Message: fmt.Sprintf("success to read data"),
-	}, nil
 }
 
 /**
@@ -199,7 +229,7 @@ func (sdk *DataServiceClient) writeDBData(ctx context.Context, request *pb.Write
 	}
 	return &pb.Response{
 		Success: true,
-		Message: fmt.Sprintf("success to write data: %v", err),
+		Message: fmt.Sprintf("success to write data"),
 	}
 }
 
@@ -220,14 +250,14 @@ func (sdk *DataServiceClient) WriteInternalDBData(ctx context.Context, request *
 	}
 	return &pb.Response{
 		Success: true,
-		Message: fmt.Sprintf("success to write data: %v", err),
+		Message: fmt.Sprintf("success to write data"),
 	}
 }
 
 // 读内置数据库数据
-/*func (sdk *DataServiceClient) readInternalDBData(ctx context.Context, request *pb.ReadInternalDataRequest) *pb.Response {
-
-}*/
+//func (sdk *DataServiceClient) readInternalDBData(ctx context.Context, request *pb.ReadInternalDataRequest) *pb.Response {
+//
+//}
 
 // DownloadFile 从指定的 URL 下载文件并保存到指定的本地路径
 func DownloadFile(url, filePath string) error {
