@@ -14,10 +14,10 @@ import (
 	"github.com/shiliang/data-service/config"
 	"github.com/shiliang/data-service/database"
 	pb "github.com/shiliang/data-service/generated/datasource"
+	log2 "github.com/shiliang/data-service/log"
 	"github.com/shiliang/data-service/server/routes"
 	"github.com/shiliang/data-service/utils"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"io"
 	"k8s.io/client-go/kubernetes"
@@ -77,25 +77,17 @@ func (s Server) WriteInternalData(g grpc.ClientStreamingServer[pb.WriterInternal
 func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerStreamingServer[pb.ArrowResponse]) error {
 	// 解析客户端请求参数
 	// 获取要连接的数据库信息
-	product_data_set := utils.GetDatasourceByAssetName(request.GetRequestId(), request.AssetName,
+	connInfo, err := utils.GetDatasourceByAssetName(request.GetRequestId(), request.AssetName,
 		request.ChainInfoId)
 
-	connInfo := &pb.ConnectionInfo{Host: product_data_set.DbConnInfo.Host,
-		Port:        product_data_set.DbConnInfo.Port,
-		User:        product_data_set.DbConnInfo.Username,
-		DbName:      product_data_set.DbConnInfo.DbName,
-		TlsCert:     product_data_set.DbConnInfo.TlsCert,
-		TlsCertExt:  product_data_set.DbConnInfo.TlsCertExt,
-		TlsCertName: product_data_set.DbConnInfo.TlsCertName,
-	}
-	dbType := utils.ConvertDataSourceType(product_data_set.GetDbConnInfo().GetType())
+	dbType := utils.ConvertDataSourceType(connInfo.Dbtype)
 	// 从数据源中读取arrow数据流
 	dbStrategy, _ := database.DatabaseFactory(dbType, connInfo)
 	if err := dbStrategy.ConnectToDB(); err != nil {
 		return fmt.Errorf("failed to connect to database: %v", err)
 	}
 	// 拼接sql，执行数据库查询
-	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(request.DbFields, ","), product_data_set.TableName)
+	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(request.DbFields, ","), connInfo.TableName)
 	rows, err := dbStrategy.Query(query)
 	if err != nil {
 		return fmt.Errorf("error executing query: %v", err)
@@ -142,9 +134,12 @@ func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WrappedWriterDataR
 		// 处理请求，拿取数据
 		reader := bytes.NewReader(request.GetRequest().GetArrowBatch())
 		// 获取要连接的数据库信息
-		product_data_set := utils.GetDatasourceByAssetName(request.GetRequestId(), request.GetRequest().GetAssetName(),
+		connInfo, err := utils.GetDatasourceByAssetName(request.GetRequestId(), request.GetRequest().GetAssetName(),
 			request.GetRequest().GetChainInfoId())
-		dbType := utils.ConvertDataSourceType(product_data_set.GetDbConnInfo().GetType())
+		if err != nil {
+			return fmt.Errorf("failed to get product data set: %v", err)
+		}
+		dbType := utils.ConvertDataSourceType(connInfo.Dbtype)
 		// 使用 Arrow 的内存分配器
 		pool := memory.NewGoAllocator()
 
@@ -157,15 +152,7 @@ func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WrappedWriterDataR
 
 		// 获取表结构信息
 		schema := ipcReader.Schema()
-		table := product_data_set.TableName
-		connInfo := &pb.ConnectionInfo{Host: product_data_set.DbConnInfo.Host,
-			Port:        product_data_set.DbConnInfo.Port,
-			User:        product_data_set.DbConnInfo.Username,
-			DbName:      product_data_set.DbConnInfo.DbName,
-			TlsCert:     product_data_set.DbConnInfo.TlsCert,
-			TlsCertExt:  product_data_set.DbConnInfo.TlsCertExt,
-			TlsCertName: product_data_set.DbConnInfo.TlsCertName,
-		}
+		table := connInfo.TableName
 		dbStrategy, err := database.DatabaseFactory(dbType, connInfo)
 		if err := dbStrategy.ConnectToDB(); err != nil {
 			return fmt.Errorf("failed to connect to database: %v", err)
@@ -187,21 +174,16 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 	chainId := request.GetRequest().GetChainInfoId()
 	requestId := request.GetRequestId()
 	// 用资产名称取数据库连接信息
-	product_data_set := utils.GetDatasourceByAssetName(requestId, assetName, chainId)
-	dbType := utils.ConvertDataSourceType(product_data_set.GetDbConnInfo().GetType())
-	connInfo := &pb.ConnectionInfo{Host: product_data_set.DbConnInfo.Host,
-		Port:        product_data_set.DbConnInfo.Port,
-		User:        product_data_set.DbConnInfo.Username,
-		DbName:      product_data_set.DbConnInfo.DbName,
-		TlsCert:     product_data_set.DbConnInfo.TlsCert,
-		TlsCertExt:  product_data_set.DbConnInfo.TlsCertExt,
-		TlsCertName: product_data_set.DbConnInfo.TlsCertName,
+	connInfo, err := utils.GetDatasourceByAssetName(requestId, assetName, chainId)
+	if err != nil {
+		return nil, err
 	}
+	dbType := utils.ConvertDataSourceType(connInfo.Dbtype)
 	dbStrategy, err := database.DatabaseFactory(dbType, connInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database strategy: %v", err)
 	}
-	jdbcUrl, err := dbStrategy.GetJdbcUrl()
+	jdbcUrl := dbStrategy.GetJdbcUrl()
 	// 初始化k8s客户端
 	k8s_config, err := rest.InClusterConfig()
 	if err != nil {
@@ -215,9 +197,7 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 
 	// 创建 Spark Pod
 	podName := "spark-job-" + requestId
-	// 本地生成tls cert文件
-	filePath, _ := utils.GenerateTLSFile(product_data_set)
-	_, err = utils.CreateSparkPod(clientset, "spark", podName, jdbcUrl, filePath)
+	_, err = utils.CreateSparkPod(clientset, "spark", podName, jdbcUrl)
 	if err != nil {
 		s.logger.Fatalf("Failed to create Pod: %v", err)
 	}
@@ -336,40 +316,21 @@ func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema
 
 func main() {
 	// 初始化 logger
-	if err := os.MkdirAll("../logs", os.ModePerm); err != nil {
-		zap.S().Fatalw("failed to create log directory", zap.Error(err))
-	}
-	// 配置 Zap 日志器
-	cfg := zap.Config{
-		Level:       zap.NewAtomicLevelAt(zap.DebugLevel),
-		Development: true,
-		Encoding:    "json",
-		OutputPaths: []string{"stdout", "../logs/app.log"},
-		EncoderConfig: zapcore.EncoderConfig{
-			MessageKey: "msg",
-		},
-	}
-
-	logger, err := cfg.Build()
-	if err != nil {
-		zap.S().Fatalw("failed to build zap logger", zap.Error(err))
-	}
-
-	// 创建 SugaredLogger
-	sugaredLogger := logger.Sugar()
-
+	log2.InitLogger()
+	// 创建spark用户权限
+	utils.SetupKubernetesClientAndResources()
 	listen, err := net.Listen("tcp", ":8580")
 	if err != nil {
-		sugaredLogger.Fatalf("failed to listen: %v", err)
+		log2.Logger.Fatalf("failed to listen: %v", err)
 	}
 	grpcServer := grpc.NewServer()
-	dataService := &Server{logger: sugaredLogger}
+	dataService := &Server{logger: log2.Logger}
 	// 注册服务
 	pb.RegisterDataSourceServiceServer(grpcServer, dataService)
-	sugaredLogger.Infof("gRPC server running at %v", listen.Addr())
+	log2.Logger.Infof("gRPC server running at %v", listen.Addr())
 	go func() {
 		if err := grpcServer.Serve(listen); err != nil {
-			sugaredLogger.Fatalf("failed to serve gRPC: %v", err)
+			log2.Logger.Fatalf("failed to serve gRPC: %v", err)
 		}
 	}()
 
@@ -377,8 +338,8 @@ func main() {
 	routes.RegisterRoutes()
 	// 启动HTTP服务器
 	conf := config.GetConfigMap()
-	sugaredLogger.Infof("HTTP server running at %s", conf.HttpServiceConfig.Port)
+	log2.Logger.Infof("HTTP server running at %s", conf.HttpServiceConfig.Port)
 	if err = http.ListenAndServe(":"+fmt.Sprintf("%d", conf.HttpServiceConfig.Port), nil); err != nil {
-		sugaredLogger.Fatalf("failed to serve: %v", err)
+		log2.Logger.Fatalf("failed to serve: %v", err)
 	}
 }

@@ -13,15 +13,23 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/uuid"
+	log "github.com/shiliang/data-service/log"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/client-go/kubernetes"
-	"log"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
+	"os"
+	"path/filepath"
 	"time"
+
+	rbacv1 "k8s.io/api/rbac/v1"
+	errors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func CreateSparkPod(clientset *kubernetes.Clientset, namespace string, podName string, jdbcUrl string, tlsCert string) (*v1.Pod, error) {
+func CreateSparkPod(clientset *kubernetes.Clientset, namespace string, podName string, jdbcUrl string) (*v1.Pod, error) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
@@ -36,7 +44,6 @@ func CreateSparkPod(clientset *kubernetes.Clientset, namespace string, podName s
 						"--class", "com.chainmaker.DynamicDatabaseJob",
 						"--master", "k8s://https://kubernetes.default.svc",
 						"--deploy-mode", "cluster",
-						"--files", tlsCert,
 						"--conf", fmt.Sprintf("spark.executor.instances=2"),
 						"--conf", fmt.Sprintf("spark.datasource.jdbc.url=%s", jdbcUrl),
 						"local:///opt/spark/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar",
@@ -80,20 +87,139 @@ func generatePodName(baseName string) string {
 	return fmt.Sprintf("%s-%s-%s", baseName, timestamp, uniqueID)
 }
 
-func monitorPod(clientset *kubernetes.Clientset, namespace, podName string, callback func(string)) {
-	for {
-		pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
-		if err != nil {
-			log.Fatalf("Error getting Pod: %s", err.Error())
+func SetupKubernetesClientAndResources() {
+	var kubeconfig string
+	// 获取 home 目录
+	if home := homedir.HomeDir(); home != "" {
+		kubeDir := filepath.Join(home, ".kube")
+		kubeconfig = filepath.Join(kubeDir, "config")
+
+		// 检查并创建 .kube 目录（如果不存在）
+		if _, err := os.Stat(kubeDir); os.IsNotExist(err) {
+			err := os.MkdirAll(kubeDir, os.ModePerm) // 创建目录
+			if err != nil {
+				log.Logger.Errorf("Failed to create .kube directory: %v\n", err)
+				return
+			}
+			log.Logger.Info(".kube directory created successfully")
 		}
-
-		fmt.Printf("Current Pod phase: %s\n", pod.Status.Phase)
-
-		if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
-			callback(string(pod.Status.Phase))
-			break
-		}
-
-		time.Sleep(10 * time.Second) // 每隔 10 秒检查一次
 	}
+
+	log.Logger.Info("Kubeconfig path:", kubeconfig)
+
+	// 通过 kubeconfig 构建配置
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		log.Logger.Fatalf("Error building kubeconfig: %v", err)
+	}
+
+	// 创建 Kubernetes 客户端
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Logger.Fatalf("Error creating Kubernetes client: %v", err)
+	}
+
+	// 检查并创建 ClusterRole
+	if !clusterRoleExists(clientset, "spark-user-role") {
+		createClusterRole(clientset)
+	} else {
+		fmt.Println("ClusterRole 'spark-user-role' already exists")
+	}
+
+	// 检查并创建 ClusterRoleBinding
+	if !clusterRoleBindingExists(clientset, "spark-user-rolebinding") {
+		createClusterRoleBinding(clientset)
+	} else {
+		fmt.Println("ClusterRoleBinding 'spark-user-rolebinding' already exists")
+	}
+}
+
+// 检查 ClusterRole 是否存在
+func clusterRoleExists(clientset *kubernetes.Clientset, name string) bool {
+	_, err := clientset.RbacV1().ClusterRoles().Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return false
+		}
+		log.Logger.Fatalf("Error checking ClusterRole: %v", err)
+	}
+	return true
+}
+
+// 检查 ClusterRoleBinding 是否存在
+func clusterRoleBindingExists(clientset *kubernetes.Clientset, name string) bool {
+	_, err := clientset.RbacV1().ClusterRoleBindings().Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return false
+		}
+		log.Logger.Fatalf("Error checking ClusterRoleBinding: %v", err)
+	}
+	return true
+}
+
+// 创建 ClusterRole
+func createClusterRole(clientset *kubernetes.Clientset) {
+	clusterRole := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "spark-user-role",
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Resources: []string{"pods", "services", "configmaps", "persistentvolumeclaims"},
+				Verbs:     []string{"get", "list", "watch", "create", "delete"},
+			},
+			{
+				APIGroups: []string{"batch"},
+				Resources: []string{"jobs"},
+				Verbs:     []string{"get", "list", "watch", "create", "delete"},
+			},
+			{
+				APIGroups: []string{"apps"},
+				Resources: []string{"deployments"},
+				Verbs:     []string{"get", "list", "watch", "create", "delete"},
+			},
+			{
+				APIGroups: []string{"sparkoperator.k8s.io"},
+				Resources: []string{"sparkapplications", "scheduledsparkapplications"},
+				Verbs:     []string{"get", "list", "watch", "create", "delete"},
+			},
+		},
+	}
+
+	_, err := clientset.RbacV1().ClusterRoles().Create(context.TODO(), clusterRole, metav1.CreateOptions{})
+	if err != nil {
+		log.Logger.Fatalf("Error creating ClusterRole: %v", err)
+	}
+
+	log.Logger.Info("ClusterRole 'spark-user-role' created successfully")
+}
+
+// 创建 ClusterRoleBinding
+func createClusterRoleBinding(clientset *kubernetes.Clientset) {
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "spark-user-rolebinding",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:     "User",
+				Name:     "spark-user", // 替换为实际用户名
+				APIGroup: "rbac.authorization.k8s.io",
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			Kind:     "ClusterRole",
+			Name:     "spark-user-role", // 绑定上面创建的角色
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	}
+
+	_, err := clientset.RbacV1().ClusterRoleBindings().Create(context.TODO(), clusterRoleBinding, metav1.CreateOptions{})
+	if err != nil {
+		log.Logger.Fatalf("Error creating ClusterRoleBinding: %v", err)
+	}
+
+	fmt.Println("ClusterRoleBinding 'spark-user-rolebinding' created successfully")
 }

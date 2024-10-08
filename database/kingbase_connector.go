@@ -134,9 +134,15 @@ func (k *KingbaseStrategy) Close() error {
 
 }
 
-func (k *KingbaseStrategy) GetJdbcUrl() (string, error) {
+func (k *KingbaseStrategy) GetJdbcUrl() string {
 	// 构建 JDBC URL
-	jdbcUrl := fmt.Sprintf("jdbc:postgresql://%s:%d/%s", k.info.Host, k.info.Port, k.info.DbName)
-
-	return jdbcUrl, nil
+	jdbcUrl := fmt.Sprintf(
+		"jdbc:kingbase8://%s:%d/%s?user=%s&password=%s",
+		k.info.Host,
+		k.info.Port,
+		k.info.DbName,
+		k.info.User,     // 添加用户名
+		k.info.Password, // 添加密码
+	)
+	return jdbcUrl
 }

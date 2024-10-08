@@ -131,22 +131,17 @@ func (m *MySQLStrategy) Close() error {
 	return nil
 }
 
-func (m *MySQLStrategy) GetJdbcUrl() (string, error) {
-	// 设置 TLS 配置，使用从 tls_cert 中提取的内容
-	err := setupTLSConfig(m.info.TlsCert)
-	if err != nil {
-		return "", fmt.Errorf("failed to setup TLS config: %v", err)
-	}
-
+func (m *MySQLStrategy) GetJdbcUrl() string {
 	// 构建 JDBC URL
 	jdbcUrl := fmt.Sprintf(
-		"jdbc:mysql://%s:%d/%s?useSSL=true&requireSSL=true&verifyServerCertificate=true&tls=%s",
+		"jdbc:mysql://%s:%d/%s?user=%s&password=%s",
 		m.info.Host,
 		m.info.Port,
 		m.info.DbName,
-		common.MYSQL_TLS_CONFIG,
+		m.info.User,     // 添加用户名
+		m.info.Password, // 添加密码
 	)
-	return jdbcUrl, nil
+	return jdbcUrl
 }
 
 func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {

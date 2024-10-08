@@ -31,7 +31,7 @@ type DatabaseStrategy interface {
 	// 关闭连接
 	Close() error
 
-	GetJdbcUrl() (string, error)
+	GetJdbcUrl() string
 
 	RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error)
 }

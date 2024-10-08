@@ -19,7 +19,7 @@ import (
 	"os"
 )
 
-func GetDatasourceByAssetName(requestId string, assetName string, chainId int32) *pb.DataSetInfo {
+func GetDatasourceByAssetName(requestId string, assetName string, chainId int32) (*pb2.ConnectionInfo, error) {
 	IDAServerAddress := os.Getenv("IDA_MANAGE_HOST")
 	IDAServerPort := os.Getenv("IDA_MANAGE_PORT")
 	idaAddress := IDAServerAddress + ":" + IDAServerPort
@@ -28,11 +28,40 @@ func GetDatasourceByAssetName(requestId string, assetName string, chainId int32)
 		log.Fatalf("did not connect: %v", err)
 	}
 	defer conn.Close()
+
 	stub := pb.NewMiraIdaAccessClient(conn)
 	request := &pb.GetPrivateAssetInfoByEnNameReq{RequestId: requestId, AssetEnName: assetName, ChainInfoId: chainId}
 	response, err := stub.GetPrivateAssetInfoByEnName(context.Background(), request)
-	product_data_set := response.GetData().ProductInfo.ProductDataSet
-	return product_data_set
+	if err != nil {
+		return nil, err
+	}
+
+	if response == nil || response.GetData() == nil {
+		return nil, fmt.Errorf("response data is nil")
+	}
+	productDataSet := response.GetData().ProductInfo.ProductDataSet
+	if productDataSet == nil || productDataSet.DbConnInfo == nil {
+		return nil, fmt.Errorf("productDataSet or DbConnInfo is nil")
+	}
+	// 通过connId取具体信息
+	connRequest := &pb.GetPrivateDBConnInfoReq{RequestId: requestId, DbConnId: productDataSet.DbConnInfo.DbConnId}
+	connResponse, err := stub.GetPrivateDBConnInfo(context.Background(), connRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	if connResponse == nil || connResponse.GetData() == nil {
+		return nil, fmt.Errorf("connection response data is nil")
+	}
+	connInfo := &pb2.ConnectionInfo{
+		Host:     connResponse.GetData().Host,
+		Port:     connResponse.GetData().Port,
+		User:     connResponse.GetData().Username,
+		DbName:   connResponse.GetData().DbName,
+		Password: connResponse.GetData().Password,
+		Dbtype:   connResponse.GetData().Type,
+	}
+	return connInfo, nil
 }
 
 // 转换数据源类型

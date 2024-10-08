@@ -75,7 +75,7 @@ message StreamReadRequest {
 }
 
 message ConnectionInfo {
-  string dbtype = 1; //数据库类型
+  int32 dbtype = 1; //数据库类型
   string host = 2; // 数据库地址
   int32  port = 3; // 数据库端口
   string tableName = 4; // 表名
