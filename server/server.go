@@ -68,7 +68,7 @@ func (s Server) WriteInternalData(g grpc.ClientStreamingServer[pb.WriterInternal
 			return fmt.Errorf("failed to connect to database: %v", err)
 		}
 		db := database.GetDB(dbStrategy)
-		if err := insertArrowDataInBatches(db, request.GetTableName(), schema, ipcReader); err != nil {
+		if err := insertArrowDataInBatches(db, request.GetTableName(), schema, ipcReader, dbType); err != nil {
 			return fmt.Errorf("failed to insert Arrow data: %v", err)
 		}
 	}
@@ -158,7 +158,7 @@ func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WrappedWriterDataR
 			return fmt.Errorf("failed to connect to database: %v", err)
 		}
 		db := database.GetDB(dbStrategy)
-		if err := insertArrowDataInBatches(db, table, schema, ipcReader); err != nil {
+		if err := insertArrowDataInBatches(db, table, schema, ipcReader, dbType); err != nil {
 			return fmt.Errorf("failed to insert Arrow data: %v", err)
 		}
 	}
@@ -256,7 +256,7 @@ func (s Server) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (
 }
 
 // 使用事务批量插入Arrow数据到数据库
-func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema, ipcReader *ipc.Reader) error {
+func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema, ipcReader *ipc.Reader, dbType pb.DataSourceType) error {
 
 	// 开始事务
 	tx, err := db.Begin()
@@ -283,7 +283,7 @@ func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema
 
 		// 当达到 batchSize 时，执行批量插入
 		if rowCount >= common.BATCH_DATA_SIZE {
-			insertSQL, err := utils.GenerateInsertSQL(tableName, argsBatch, schema)
+			insertSQL, err := utils.GenerateInsertSQL(tableName, argsBatch, schema, dbType)
 			_, err = tx.Exec(insertSQL, argsBatch...)
 			if err != nil {
 				tx.Rollback()
@@ -296,7 +296,7 @@ func insertArrowDataInBatches(db *sql.DB, tableName string, schema *arrow.Schema
 
 	// 如果最后一批数据未达到 batchSize，需要手动插入
 	if rowCount > 0 && len(argsBatch) > 0 {
-		insertSQL, err := utils.GenerateInsertSQL(tableName, argsBatch, schema)
+		insertSQL, err := utils.GenerateInsertSQL(tableName, argsBatch, schema, dbType)
 		_, err = tx.Exec(insertSQL, argsBatch...)
 		if err != nil {
 			tx.Rollback()
@@ -318,7 +318,7 @@ func main() {
 	// 初始化 logger
 	log2.InitLogger()
 	// 创建spark用户权限
-	utils.SetupKubernetesClientAndResources()
+	// utils.SetupKubernetesClientAndResources()
 	listen, err := net.Listen("tcp", ":8580")
 	if err != nil {
 		log2.Logger.Fatalf("failed to listen: %v", err)

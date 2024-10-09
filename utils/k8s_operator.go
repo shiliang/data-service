@@ -17,12 +17,9 @@ import (
 	log "github.com/shiliang/data-service/log"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/rest"
 
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
-	"os"
-	"path/filepath"
 	"time"
 
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -89,31 +86,10 @@ func generatePodName(baseName string) string {
 }
 
 func SetupKubernetesClientAndResources() {
-	var kubeconfig string
-	// 获取 home 目录
-	if home := homedir.HomeDir(); home != "" {
-		kubeDir := filepath.Join(home, ".kube")
-		kubeconfig = filepath.Join(kubeDir, "config")
-
-		// 检查并创建 .kube 目录（如果不存在）
-		if _, err := os.Stat(kubeDir); os.IsNotExist(err) {
-			err := os.MkdirAll(kubeDir, os.ModePerm) // 创建目录
-			if err != nil {
-				log.Logger.Errorf("Failed to create .kube directory: %v\n", err)
-				return
-			}
-			log.Logger.Info(".kube directory created successfully")
-		}
-	}
-
-	log.Logger.Info("Kubeconfig path:", kubeconfig)
-
-	// 通过 kubeconfig 构建配置
-	k8sConfig, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	k8sConfig, err := rest.InClusterConfig()
 	if err != nil {
-		log.Logger.Fatalf("Error building kubeconfig: %v", err)
+		log.Logger.Fatalf("Error getting Kubernetes config: %v", err)
 	}
-
 	// 创建 Kubernetes 客户端
 	clientset, err := kubernetes.NewForConfig(k8sConfig)
 	if err != nil {

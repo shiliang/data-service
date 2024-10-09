@@ -24,7 +24,9 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	MiraIdaAccess_GetPrivateDBConnInfo_FullMethodName        = "/proto.MiraIdaAccess/GetPrivateDBConnInfo"
 	MiraIdaAccess_GetPrivateAssetInfoByEnName_FullMethodName = "/proto.MiraIdaAccess/GetPrivateAssetInfoByEnName"
-	MiraIdaAccess_Encrypt_FullMethodName                     = "/proto.MiraIdaAccess/Encrypt"
+	MiraIdaAccess_SetTaskPartyInfo_FullMethodName            = "/proto.MiraIdaAccess/SetTaskPartyInfo"
+	MiraIdaAccess_GetSkFromPk_FullMethodName                 = "/proto.MiraIdaAccess/GetSkFromPk"
+	MiraIdaAccess_GetSkFromKeyId_FullMethodName              = "/proto.MiraIdaAccess/GetSkFromKeyId"
 )
 
 // MiraIdaAccessClient is the client API for MiraIdaAccess service.
@@ -33,10 +35,13 @@ const (
 type MiraIdaAccessClient interface {
 	// 1. 获取包含隐私信息的数据源连接信息接口
 	GetPrivateDBConnInfo(ctx context.Context, in *GetPrivateDBConnInfoReq, opts ...grpc.CallOption) (*GetPrivateDBConnInfoResp, error)
-	// 2. 通过资产英文名称获取资产详情
+	// 4. 通过资产英文名称获取资产详情
 	GetPrivateAssetInfoByEnName(ctx context.Context, in *GetPrivateAssetInfoByEnNameReq, opts ...grpc.CallOption) (*GetPrivateAssetInfoByEnNameResp, error)
-	// 加密接口
-	Encrypt(ctx context.Context, in *KeyEncryptRequest, opts ...grpc.CallOption) (*KeyEncryptResponse, error)
+	SetTaskPartyInfo(ctx context.Context, in *ContractRequest, opts ...grpc.CallOption) (*ContractResponse, error)
+	// 根据公钥获取私钥
+	GetSkFromPk(ctx context.Context, in *GetPrivateKeyRequest, opts ...grpc.CallOption) (*GetSkResponse, error)
+	// 根据 keyId 获取私钥
+	GetSkFromKeyId(ctx context.Context, in *GetPrivateKeyRequest, opts ...grpc.CallOption) (*GetSkResponse, error)
 }
 
 type miraIdaAccessClient struct {
@@ -67,10 +72,30 @@ func (c *miraIdaAccessClient) GetPrivateAssetInfoByEnName(ctx context.Context, i
 	return out, nil
 }
 
-func (c *miraIdaAccessClient) Encrypt(ctx context.Context, in *KeyEncryptRequest, opts ...grpc.CallOption) (*KeyEncryptResponse, error) {
+func (c *miraIdaAccessClient) SetTaskPartyInfo(ctx context.Context, in *ContractRequest, opts ...grpc.CallOption) (*ContractResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(KeyEncryptResponse)
-	err := c.cc.Invoke(ctx, MiraIdaAccess_Encrypt_FullMethodName, in, out, cOpts...)
+	out := new(ContractResponse)
+	err := c.cc.Invoke(ctx, MiraIdaAccess_SetTaskPartyInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *miraIdaAccessClient) GetSkFromPk(ctx context.Context, in *GetPrivateKeyRequest, opts ...grpc.CallOption) (*GetSkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSkResponse)
+	err := c.cc.Invoke(ctx, MiraIdaAccess_GetSkFromPk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *miraIdaAccessClient) GetSkFromKeyId(ctx context.Context, in *GetPrivateKeyRequest, opts ...grpc.CallOption) (*GetSkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSkResponse)
+	err := c.cc.Invoke(ctx, MiraIdaAccess_GetSkFromKeyId_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -83,10 +108,13 @@ func (c *miraIdaAccessClient) Encrypt(ctx context.Context, in *KeyEncryptRequest
 type MiraIdaAccessServer interface {
 	// 1. 获取包含隐私信息的数据源连接信息接口
 	GetPrivateDBConnInfo(context.Context, *GetPrivateDBConnInfoReq) (*GetPrivateDBConnInfoResp, error)
-	// 2. 通过资产英文名称获取资产详情
+	// 4. 通过资产英文名称获取资产详情
 	GetPrivateAssetInfoByEnName(context.Context, *GetPrivateAssetInfoByEnNameReq) (*GetPrivateAssetInfoByEnNameResp, error)
-	// 加密接口
-	Encrypt(context.Context, *KeyEncryptRequest) (*KeyEncryptResponse, error)
+	SetTaskPartyInfo(context.Context, *ContractRequest) (*ContractResponse, error)
+	// 根据公钥获取私钥
+	GetSkFromPk(context.Context, *GetPrivateKeyRequest) (*GetSkResponse, error)
+	// 根据 keyId 获取私钥
+	GetSkFromKeyId(context.Context, *GetPrivateKeyRequest) (*GetSkResponse, error)
 	mustEmbedUnimplementedMiraIdaAccessServer()
 }
 
@@ -103,8 +131,14 @@ func (UnimplementedMiraIdaAccessServer) GetPrivateDBConnInfo(context.Context, *G
 func (UnimplementedMiraIdaAccessServer) GetPrivateAssetInfoByEnName(context.Context, *GetPrivateAssetInfoByEnNameReq) (*GetPrivateAssetInfoByEnNameResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPrivateAssetInfoByEnName not implemented")
 }
-func (UnimplementedMiraIdaAccessServer) Encrypt(context.Context, *KeyEncryptRequest) (*KeyEncryptResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Encrypt not implemented")
+func (UnimplementedMiraIdaAccessServer) SetTaskPartyInfo(context.Context, *ContractRequest) (*ContractResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetTaskPartyInfo not implemented")
+}
+func (UnimplementedMiraIdaAccessServer) GetSkFromPk(context.Context, *GetPrivateKeyRequest) (*GetSkResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSkFromPk not implemented")
+}
+func (UnimplementedMiraIdaAccessServer) GetSkFromKeyId(context.Context, *GetPrivateKeyRequest) (*GetSkResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSkFromKeyId not implemented")
 }
 func (UnimplementedMiraIdaAccessServer) mustEmbedUnimplementedMiraIdaAccessServer() {}
 func (UnimplementedMiraIdaAccessServer) testEmbeddedByValue()                       {}
@@ -163,20 +197,56 @@ func _MiraIdaAccess_GetPrivateAssetInfoByEnName_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _MiraIdaAccess_Encrypt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(KeyEncryptRequest)
+func _MiraIdaAccess_SetTaskPartyInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ContractRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MiraIdaAccessServer).Encrypt(ctx, in)
+		return srv.(MiraIdaAccessServer).SetTaskPartyInfo(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: MiraIdaAccess_Encrypt_FullMethodName,
+		FullMethod: MiraIdaAccess_SetTaskPartyInfo_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MiraIdaAccessServer).Encrypt(ctx, req.(*KeyEncryptRequest))
+		return srv.(MiraIdaAccessServer).SetTaskPartyInfo(ctx, req.(*ContractRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MiraIdaAccess_GetSkFromPk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPrivateKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MiraIdaAccessServer).GetSkFromPk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MiraIdaAccess_GetSkFromPk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MiraIdaAccessServer).GetSkFromPk(ctx, req.(*GetPrivateKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MiraIdaAccess_GetSkFromKeyId_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPrivateKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MiraIdaAccessServer).GetSkFromKeyId(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MiraIdaAccess_GetSkFromKeyId_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MiraIdaAccessServer).GetSkFromKeyId(ctx, req.(*GetPrivateKeyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -197,8 +267,16 @@ var MiraIdaAccess_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _MiraIdaAccess_GetPrivateAssetInfoByEnName_Handler,
 		},
 		{
-			MethodName: "Encrypt",
-			Handler:    _MiraIdaAccess_Encrypt_Handler,
+			MethodName: "SetTaskPartyInfo",
+			Handler:    _MiraIdaAccess_SetTaskPartyInfo_Handler,
+		},
+		{
+			MethodName: "GetSkFromPk",
+			Handler:    _MiraIdaAccess_GetSkFromPk_Handler,
+		},
+		{
+			MethodName: "GetSkFromKeyId",
+			Handler:    _MiraIdaAccess_GetSkFromKeyId_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

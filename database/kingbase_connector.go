@@ -12,6 +12,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	_ "gitea.com/kingbase/gokb"
 	"github.com/apache/arrow/go/v15/arrow"
 	ds "github.com/shiliang/data-service/generated/datasource"
 	"go.uber.org/zap"

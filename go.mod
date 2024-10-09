@@ -3,6 +3,7 @@ module github.com/shiliang/data-service
 go 1.23.0
 
 require (
+	gitea.com/kingbase/gokb v0.0.0-20201021123113-29bd62a876c3
 	github.com/apache/arrow/go/arrow v0.0.0-20211112161151-bc219186db40
 	github.com/apache/arrow/go/v15 v15.0.2
 	github.com/go-sql-driver/mysql v1.8.1

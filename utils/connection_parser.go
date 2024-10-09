@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/apache/arrow/go/v15/arrow"
 	"github.com/apache/arrow/go/v15/arrow/array"
+	pb "github.com/shiliang/data-service/generated/datasource"
 	"strings"
 )
 
@@ -99,7 +100,7 @@ func ExtractRowData(record arrow.Record) ([]interface{}, error) {
 }
 
 // GenerateInsertSQL 生成 SQL 插入语句
-func GenerateInsertSQL(tableName string, rowData []interface{}, schema *arrow.Schema) (string, error) {
+func GenerateInsertSQL(tableName string, rowData []interface{}, schema *arrow.Schema, dbType pb.DataSourceType) (string, error) {
 	numCols := schema.NumFields()
 	if len(rowData)%numCols != 0 {
 		return "", fmt.Errorf("row data length (%d) does not match schema length (%d)", len(rowData), numCols)
@@ -116,13 +117,27 @@ func GenerateInsertSQL(tableName string, rowData []interface{}, schema *arrow.Sc
 	var placeholders []string
 	var values []string
 	rowCount := len(rowData) / numCols
-	for rowIdx := 0; rowIdx < rowCount; rowIdx++ {
-		var singleRowPlaceholders []string
-		for colIdx := 0; colIdx < numCols; colIdx++ {
-			singleRowPlaceholders = append(singleRowPlaceholders, "?")
-			values = append(values, fmt.Sprintf("%v", rowData[rowIdx*numCols+colIdx]))
+
+	if dbType == pb.DataSourceType_DATA_SOURCE_TYPE_KINGBASE {
+		// Kingbase 占位符从 $1 开始递增
+		for rowIdx := 0; rowIdx < rowCount; rowIdx++ {
+			var singleRowPlaceholders []string
+			for colIdx := 0; colIdx < numCols; colIdx++ {
+				singleRowPlaceholders = append(singleRowPlaceholders, fmt.Sprintf("$%d", rowIdx*numCols+colIdx+1))
+				values = append(values, fmt.Sprintf("%v", rowData[rowIdx*numCols+colIdx]))
+			}
+			placeholders = append(placeholders, fmt.Sprintf("(%s)", strings.Join(singleRowPlaceholders, ", ")))
 		}
-		placeholders = append(placeholders, fmt.Sprintf("(%s)", strings.Join(singleRowPlaceholders, ", ")))
+	} else if dbType == pb.DataSourceType_DATA_SOURCE_TYPE_MYSQL {
+		// MySQL 占位符使用问号
+		for rowIdx := 0; rowIdx < rowCount; rowIdx++ {
+			var singleRowPlaceholders []string
+			for colIdx := 0; colIdx < numCols; colIdx++ {
+				singleRowPlaceholders = append(singleRowPlaceholders, "?")
+				values = append(values, fmt.Sprintf("%v", rowData[rowIdx*numCols+colIdx]))
+			}
+			placeholders = append(placeholders, fmt.Sprintf("(%s)", strings.Join(singleRowPlaceholders, ", ")))
+		}
 	}
 
 	placeholdersStr := strings.Join(placeholders, ", ")
