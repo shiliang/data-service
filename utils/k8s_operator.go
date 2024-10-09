@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/shiliang/data-service/config"
 	log "github.com/shiliang/data-service/log"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
@@ -108,29 +109,32 @@ func SetupKubernetesClientAndResources() {
 	log.Logger.Info("Kubeconfig path:", kubeconfig)
 
 	// 通过 kubeconfig 构建配置
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	k8sConfig, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		log.Logger.Fatalf("Error building kubeconfig: %v", err)
 	}
 
 	// 创建 Kubernetes 客户端
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(k8sConfig)
 	if err != nil {
 		log.Logger.Fatalf("Error creating Kubernetes client: %v", err)
 	}
 
+	createSparkserviceAccount(clientset)
+	conf := config.GetConfigMap()
 	// 检查并创建 ClusterRole
-	if !clusterRoleExists(clientset, "spark-user-role") {
-		createClusterRole(clientset)
+	if !clusterRoleExists(clientset, conf.SparkPodConfig.ClusterRole) {
+		createClusterRole(clientset, conf.SparkPodConfig.ClusterRole)
 	} else {
-		fmt.Println("ClusterRole 'spark-user-role' already exists")
+		log.Logger.Warnf("ClusterRole '%s' already exists", conf.SparkPodConfig.ClusterRole)
 	}
 
 	// 检查并创建 ClusterRoleBinding
-	if !clusterRoleBindingExists(clientset, "spark-user-rolebinding") {
-		createClusterRoleBinding(clientset)
+	if !clusterRoleBindingExists(clientset, conf.SparkPodConfig.ClusterRoleBind) {
+		createClusterRoleBinding(clientset, conf.SparkPodConfig.ClusterRole, conf.SparkPodConfig.ClusterRoleBind,
+			conf.SparkPodConfig.UserName)
 	} else {
-		fmt.Println("ClusterRoleBinding 'spark-user-rolebinding' already exists")
+		log.Logger.Warnf("ClusterRoleBinding '%s' already exists", conf.SparkPodConfig.ClusterRoleBind)
 	}
 }
 
@@ -159,10 +163,10 @@ func clusterRoleBindingExists(clientset *kubernetes.Clientset, name string) bool
 }
 
 // 创建 ClusterRole
-func createClusterRole(clientset *kubernetes.Clientset) {
+func createClusterRole(clientset *kubernetes.Clientset, name string) {
 	clusterRole := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "spark-user-role",
+			Name: name,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -193,25 +197,25 @@ func createClusterRole(clientset *kubernetes.Clientset) {
 		log.Logger.Fatalf("Error creating ClusterRole: %v", err)
 	}
 
-	log.Logger.Info("ClusterRole 'spark-user-role' created successfully")
+	log.Logger.Infof("ClusterRole '%s' created successfully", name)
 }
 
 // 创建 ClusterRoleBinding
-func createClusterRoleBinding(clientset *kubernetes.Clientset) {
+func createClusterRoleBinding(clientset *kubernetes.Clientset, roleName string, roleBindingName string, userName string) {
 	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "spark-user-rolebinding",
+			Name: roleBindingName,
 		},
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:     "User",
-				Name:     "spark-user", // 替换为实际用户名
+				Name:     userName, // 替换为实际用户名
 				APIGroup: "rbac.authorization.k8s.io",
 			},
 		},
 		RoleRef: rbacv1.RoleRef{
 			Kind:     "ClusterRole",
-			Name:     "spark-user-role", // 绑定上面创建的角色
+			Name:     roleName, // 绑定上面创建的角色
 			APIGroup: "rbac.authorization.k8s.io",
 		},
 	}
@@ -221,5 +225,37 @@ func createClusterRoleBinding(clientset *kubernetes.Clientset) {
 		log.Logger.Fatalf("Error creating ClusterRoleBinding: %v", err)
 	}
 
-	fmt.Println("ClusterRoleBinding 'spark-user-rolebinding' created successfully")
+	log.Logger.Infof("ClusterRoleBinding '%s' created successfully", roleBindingName)
+}
+
+func createSparkserviceAccount(clientset *kubernetes.Clientset) {
+	conf := config.GetConfigMap()
+
+	// 检查服务账户是否存在
+	_, err := clientset.CoreV1().ServiceAccounts(conf.SparkPodConfig.Namespace).Get(context.TODO(),
+		conf.SparkPodConfig.AccountName, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// 服务账户不存在，创建它
+			serviceAccount := &v1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      conf.SparkPodConfig.AccountName,
+					Namespace: conf.SparkPodConfig.Namespace,
+				},
+			}
+
+			_, err := clientset.CoreV1().ServiceAccounts(conf.SparkPodConfig.Namespace).Create(context.TODO(), serviceAccount, metav1.CreateOptions{})
+			if err != nil {
+				log.Logger.Fatalf("Error creating ServiceAccount: %v", err)
+			}
+
+			log.Logger.Infof("ServiceAccount '%s' created successfully", conf.SparkPodConfig.AccountName)
+		} else {
+			// 其他错误
+			log.Logger.Fatalf("Error checking ServiceAccount: %v", err)
+		}
+	} else {
+		// 服务账户已存在
+		log.Logger.Infof("ServiceAccount '%s' already exists", conf.SparkPodConfig.AccountName)
+	}
 }

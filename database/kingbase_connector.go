@@ -32,8 +32,20 @@ func (k *KingbaseStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error
 }
 
 func (k *KingbaseStrategy) ConnectToDBWithPass(info *ds.ConnectionInfo) error {
-	//TODO implement me
-	panic("implement me")
+	// 构造 Kingbase DSN 数据源名称，包含用户名、密码和连接信息
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", info.Host, info.Port, info.User, info.Password, info.DbName)
+
+	// 打开数据库连接
+	db, err := sql.Open("kingbase", dsn) // 使用 Kingbase 驱动
+	if err != nil {
+		k.logger.Errorf("Failed to connect to Kingbase: %v", err)
+		return fmt.Errorf("failed to connect to Kingbase: %v", err)
+	}
+
+	// 成功连接后，保存数据库实例
+	k.DB = db
+	k.logger.Info("Successfully connected to Kingbase with username and password")
+	return nil
 }
 
 func NewKingbaseStrategy(info *ds.ConnectionInfo) *KingbaseStrategy {

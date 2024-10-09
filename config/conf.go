@@ -19,6 +19,7 @@ type DataServiceConf struct {
 	OSSConfig         OSSConfig         `yaml:"oss"`
 	Dbms              DbmsConfig        `yaml:"dbms"`
 	HttpServiceConfig HttpServiceConfig `yaml:"http"`
+	SparkPodConfig    sparkPodConfig    `yaml:"spark"`
 }
 
 type DbmsConfig struct {
@@ -44,6 +45,14 @@ type OSSConfig struct {
 
 type HttpServiceConfig struct {
 	Port int32 `yaml:"port"`
+}
+
+type sparkPodConfig struct {
+	AccountName     string `yaml:"account_name"`
+	Namespace       string `yaml:"namespace"`
+	UserName        string `yaml:"user_name"`
+	ClusterRole     string `yaml:"cluster_role"`
+	ClusterRoleBind string `yaml:"cluster_role_bind"`
 }
 
 func parseConfigMap() *DataServiceConf {
