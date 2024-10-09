@@ -19,7 +19,7 @@ import (
 	"os"
 )
 
-func GetDatasourceByAssetName(requestId string, assetName string, chainId int32) (*pb2.ConnectionInfo, error) {
+func GetDatasourceByAssetName(requestId string, assetName string, chainId int32, platformId int32) (*pb2.ConnectionInfo, error) {
 	IDAServerAddress := os.Getenv("IDA_MANAGE_HOST")
 	IDAServerPort := os.Getenv("IDA_MANAGE_PORT")
 	idaAddress := IDAServerAddress + ":" + IDAServerPort
@@ -30,7 +30,8 @@ func GetDatasourceByAssetName(requestId string, assetName string, chainId int32)
 	defer conn.Close()
 
 	stub := pb.NewMiraIdaAccessClient(conn)
-	request := &pb.GetPrivateAssetInfoByEnNameReq{RequestId: requestId, AssetEnName: assetName, ChainInfoId: chainId}
+	request := &pb.GetPrivateAssetInfoByEnNameReq{RequestId: requestId, AssetEnName: assetName, ChainInfoId: chainId,
+		PlatformId: platformId}
 	response, err := stub.GetPrivateAssetInfoByEnName(context.Background(), request)
 	if err != nil {
 		return nil, err

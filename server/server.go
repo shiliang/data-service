@@ -78,7 +78,7 @@ func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerSt
 	// 解析客户端请求参数
 	// 获取要连接的数据库信息
 	connInfo, err := utils.GetDatasourceByAssetName(request.GetRequestId(), request.AssetName,
-		request.ChainInfoId)
+		request.ChainInfoId, request.PlatformId)
 
 	dbType := utils.ConvertDataSourceType(connInfo.Dbtype)
 	// 从数据源中读取arrow数据流
@@ -135,7 +135,7 @@ func (s Server) SendArrowData(g grpc.ClientStreamingServer[pb.WrappedWriterDataR
 		reader := bytes.NewReader(request.GetRequest().GetArrowBatch())
 		// 获取要连接的数据库信息
 		connInfo, err := utils.GetDatasourceByAssetName(request.GetRequestId(), request.GetRequest().GetAssetName(),
-			request.GetRequest().GetChainInfoId())
+			request.GetRequest().GetChainInfoId(), request.GetRequest().PlatformId)
 		if err != nil {
 			return fmt.Errorf("failed to get product data set: %v", err)
 		}
@@ -173,8 +173,9 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 	assetName := request.GetRequest().GetAssetName()
 	chainId := request.GetRequest().GetChainInfoId()
 	requestId := request.GetRequestId()
+	platformId := request.GetRequest().GetPlatformId()
 	// 用资产名称取数据库连接信息
-	connInfo, err := utils.GetDatasourceByAssetName(requestId, assetName, chainId)
+	connInfo, err := utils.GetDatasourceByAssetName(requestId, assetName, chainId, platformId)
 	if err != nil {
 		return nil, err
 	}

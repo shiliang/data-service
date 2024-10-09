@@ -38,6 +38,7 @@ message WriterDataRequest {
   bytes arrow_batch = 1;
   string assetName = 2; // 资产名称
   int32 chainInfoId = 3;
+  int32 platformId = 4;
 }
 
 message WrappedWriterDataRequest {
@@ -57,6 +58,7 @@ message BatchReadRequest {
   int32 chainInfoId = 2;
   repeated string dbFields = 3;  // 数据库字段名的字符串数组
   string filePath = 4; // 下载到本地的文件路径
+  int32 platformId = 5; // 平台id
 }
 
 message WrappedReadRequest {
@@ -72,6 +74,7 @@ message StreamReadRequest {
   string requestId = 4;
   FileType fileType = 5;
   string filePath = 6;
+  int32 platformId = 7;
 }
 
 message ConnectionInfo {
