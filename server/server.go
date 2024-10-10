@@ -198,7 +198,7 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 
 	// 创建 Spark Pod
 	podName := "spark-job-" + requestId
-	_, err = utils.CreateSparkPod(clientset, "spark", podName, jdbcUrl)
+	_, err = utils.CreateSparkPod(clientset, podName, jdbcUrl)
 	if err != nil {
 		s.logger.Fatalf("Failed to create Pod: %v", err)
 	}

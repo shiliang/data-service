@@ -17,9 +17,8 @@ import (
 	log "github.com/shiliang/data-service/log"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/rest"
-
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"time"
 
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -27,24 +26,39 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func CreateSparkPod(clientset *kubernetes.Clientset, namespace string, podName string, jdbcUrl string) (*v1.Pod, error) {
+func CreateSparkPod(clientset *kubernetes.Clientset, podName string, jdbcUrl string) (*v1.Pod, error) {
+	conf := config.GetConfigMap()
+	imageFullName := conf.SparkPodConfig.ImageName + ":" + conf.SparkPodConfig.ImageTag
+	minioEndpoint := fmt.Sprintf("%s:%d", conf.OSSConfig.Host, conf.OSSConfig.Port)
+	minioAccessKey := conf.OSSConfig.AccessKey
+	minioSecretKey := conf.OSSConfig.SecretKey
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: podName,
+			Name:      podName,
+			Namespace: conf.SparkPodConfig.Namespace,
 		},
 		Spec: corev1.PodSpec{
+			ServiceAccountName: conf.SparkPodConfig.AccountName,
 			Containers: []corev1.Container{
 				{
 					Name:  "spark-container",
-					Image: "spark:3.5.2", // 替换为实际的 Spark 镜像
+					Image: imageFullName, // 替换为实际的 Spark 镜像
 					Args: []string{
 						"/opt/spark/bin/spark-submit",
-						"--class", "com.chainmaker.DynamicDatabaseJob",
-						"--master", "k8s://https://kubernetes.default.svc",
+						"--class", conf.SparkPodConfig.Class,
+						"--master", conf.SparkPodConfig.Master,
 						"--deploy-mode", "cluster",
 						"--conf", fmt.Sprintf("spark.executor.instances=2"),
 						"--conf", fmt.Sprintf("spark.datasource.jdbc.url=%s", jdbcUrl),
-						"local:///opt/spark/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar",
+						"--conf", fmt.Sprintf("spark.kubernetes.namespace=%s", conf.SparkPodConfig.Namespace),
+						"--conf", fmt.Sprintf("spark.kubernetes.driver.container.image=%s", imageFullName),
+						"--conf", fmt.Sprintf("spark.kubernetes.executor.container.image=%s", imageFullName),
+						"--conf", fmt.Sprintf("spark.hadoop.fs.s3a.endpoint=%s", minioEndpoint), // 配置 MinIO 访问
+						"--conf", fmt.Sprintf("spark.hadoop.fs.s3a.access.key=%s", minioAccessKey),
+						"--conf", fmt.Sprintf("spark.hadoop.fs.s3a.secret.key=%s", minioSecretKey),
+						"--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem",
+						conf.SparkPodConfig.MinioJarPath, // MinIO 上的 JAR 文件
 					},
 					Env: []corev1.EnvVar{
 						{
@@ -60,11 +74,12 @@ func CreateSparkPod(clientset *kubernetes.Clientset, namespace string, podName s
 					},
 				},
 			},
+			Volumes:       []corev1.Volume{},
 			RestartPolicy: corev1.RestartPolicyNever,
 		},
 	}
 
-	return clientset.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	return clientset.CoreV1().Pods(conf.SparkPodConfig.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 }
 
 // generatePodName 生成具有唯一性的 Pod 名称。

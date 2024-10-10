@@ -53,6 +53,11 @@ type sparkPodConfig struct {
 	UserName        string `yaml:"user_name"`
 	ClusterRole     string `yaml:"cluster_role"`
 	ClusterRoleBind string `yaml:"cluster_role_bind"`
+	ImageName       string `yaml:"image_name"`
+	ImageTag        string `yaml:"image_tag"`
+	Class           string `yaml:"class"`
+	Master          string `yaml:"master"`
+	MinioJarPath    string `yaml:"minio_jar_path"`
 }
 
 func parseConfigMap() *DataServiceConf {
