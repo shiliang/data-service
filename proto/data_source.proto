@@ -59,6 +59,7 @@ message BatchReadRequest {
   repeated string dbFields = 3;  // 数据库字段名的字符串数组
   string filePath = 4; // 下载到本地的文件路径
   int32 platformId = 5; // 平台id
+  string fileName = 6; // 文件名
 }
 
 message WrappedReadRequest {
@@ -120,5 +121,16 @@ message OSSWriteRequest {
   string requestId = 2;
   string filePath = 3; // 本地文件路径
   bytes fileContent = 4; // 写入文件的内容
+}
+
+message SparkDBConnInfo {
+  string dbType = 1;
+  string host = 2;
+  int32 port = 3;
+  string database = 4;
+  string username = 5;
+  string password = 6;
+  string query = 7; // 执行的查询语句
+  string fileName = 8;
 }
 

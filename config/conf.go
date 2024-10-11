@@ -44,7 +44,9 @@ type OSSConfig struct {
 }
 
 type HttpServiceConfig struct {
-	Port int32 `yaml:"port"`
+	Port           int32  `yaml:"port"`
+	DataServer     string `yaml:"data_server"`
+	DataServerPort int32  `yaml:"data_server_port"`
 }
 
 type sparkPodConfig struct {

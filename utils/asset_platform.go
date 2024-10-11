@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"os"
+	"strings"
 )
 
 func GetDatasourceByAssetName(requestId string, assetName string, chainId int32, platformId int32) (*pb2.ConnectionInfo, error) {
@@ -88,6 +89,17 @@ func ConvertDBType(dbType string) pb2.DataSourceType {
 	}
 }
 
+func GetDbTypeName(dbType int32) string {
+	switch dbType {
+	case 1:
+		return "mysql"
+	case 2:
+		return "kingbase"
+	default:
+		return "unknown"
+	}
+}
+
 // GenerateTLSFile 生成本地的 TLS 证书文件
 func GenerateTLSFile(connInfo *pb.DataSetInfo) (string, error) {
 	// 组合文件名和路径
@@ -100,4 +112,18 @@ func GenerateTLSFile(connInfo *pb.DataSetInfo) (string, error) {
 	}
 
 	return filePath, nil
+}
+
+func BuildSelectQuery(request *pb2.BatchReadRequest, tableName string) string {
+	// 如果 dbFields 为空，则默认选择所有字段 "*"
+	var fields string
+	if len(request.DbFields) > 0 {
+		fields = strings.Join(request.DbFields, ", ")
+	} else {
+		fields = "*"
+	}
+
+	// 构建 SELECT 语句
+	query := fmt.Sprintf("SELECT %s FROM %s;", fields, tableName)
+	return query
 }

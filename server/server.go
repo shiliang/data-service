@@ -174,17 +174,13 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 	chainId := request.GetRequest().GetChainInfoId()
 	requestId := request.GetRequestId()
 	platformId := request.GetRequest().GetPlatformId()
+	fileName := request.GetRequest().GetFileName()
 	// 用资产名称取数据库连接信息
 	connInfo, err := utils.GetDatasourceByAssetName(requestId, assetName, chainId, platformId)
 	if err != nil {
 		return nil, err
 	}
-	dbType := utils.ConvertDataSourceType(connInfo.Dbtype)
-	dbStrategy, err := database.DatabaseFactory(dbType, connInfo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database strategy: %v", err)
-	}
-	jdbcUrl := dbStrategy.GetJdbcUrl()
+
 	// 初始化k8s客户端
 	k8s_config, err := rest.InClusterConfig()
 	if err != nil {
@@ -198,7 +194,19 @@ func (s Server) ReadBatchData(ctx context.Context, request *pb.WrappedReadReques
 
 	// 创建 Spark Pod
 	podName := "spark-job-" + requestId
-	_, err = utils.CreateSparkPod(clientset, podName, jdbcUrl)
+	dbTypeName := utils.GetDbTypeName(connInfo.Dbtype)
+	querySql := utils.BuildSelectQuery(request.GetRequest(), connInfo.TableName)
+	sparkConnInfo := &pb.SparkDBConnInfo{
+		DbType:   dbTypeName,
+		Host:     connInfo.Host,
+		Port:     connInfo.Port,
+		Database: connInfo.DbName,
+		Username: connInfo.User,
+		Password: connInfo.Password,
+		Query:    querySql,
+		FileName: fileName,
+	}
+	_, err = utils.CreateSparkPod(clientset, podName, sparkConnInfo)
 	if err != nil {
 		s.logger.Fatalf("Failed to create Pod: %v", err)
 	}

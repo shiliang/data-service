@@ -14,25 +14,24 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/shiliang/data-service/config"
+	pb "github.com/shiliang/data-service/generated/datasource"
 	log "github.com/shiliang/data-service/log"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"time"
-
 	rbacv1 "k8s.io/api/rbac/v1"
 	errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"time"
 )
 
-func CreateSparkPod(clientset *kubernetes.Clientset, podName string, jdbcUrl string) (*v1.Pod, error) {
+func CreateSparkPod(clientset *kubernetes.Clientset, podName string, info *pb.SparkDBConnInfo) (*v1.Pod, error) {
 	conf := config.GetConfigMap()
 	imageFullName := conf.SparkPodConfig.ImageName + ":" + conf.SparkPodConfig.ImageTag
 	minioEndpoint := fmt.Sprintf("%s:%d", conf.OSSConfig.Host, conf.OSSConfig.Port)
 	minioAccessKey := conf.OSSConfig.AccessKey
 	minioSecretKey := conf.OSSConfig.SecretKey
-
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
@@ -50,21 +49,23 @@ func CreateSparkPod(clientset *kubernetes.Clientset, podName string, jdbcUrl str
 						"--master", conf.SparkPodConfig.Master,
 						"--deploy-mode", "cluster",
 						"--conf", fmt.Sprintf("spark.executor.instances=2"),
-						"--conf", fmt.Sprintf("spark.datasource.jdbc.url=%s", jdbcUrl),
 						"--conf", fmt.Sprintf("spark.kubernetes.namespace=%s", conf.SparkPodConfig.Namespace),
 						"--conf", fmt.Sprintf("spark.kubernetes.driver.container.image=%s", imageFullName),
 						"--conf", fmt.Sprintf("spark.kubernetes.executor.container.image=%s", imageFullName),
-						"--conf", fmt.Sprintf("spark.hadoop.fs.s3a.endpoint=%s", minioEndpoint), // 配置 MinIO 访问
-						"--conf", fmt.Sprintf("spark.hadoop.fs.s3a.access.key=%s", minioAccessKey),
-						"--conf", fmt.Sprintf("spark.hadoop.fs.s3a.secret.key=%s", minioSecretKey),
-						"--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem",
-						conf.SparkPodConfig.MinioJarPath, // MinIO 上的 JAR 文件
-					},
-					Env: []corev1.EnvVar{
-						{
-							Name:  "JDBC_URL",
-							Value: jdbcUrl,
-						},
+						"local:///opt/spark/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar",
+						"--dbtype", info.DbType,
+						"--host", info.Host,
+						"--port", fmt.Sprintf("%d", info.Port),
+						"--database", info.Database,
+						"--username", info.Username,
+						"--password", info.Password,
+						"--query", info.Query,
+						"--serverip", conf.HttpServiceConfig.DataServer,
+						"--serverport", fmt.Sprintf("%d", conf.HttpServiceConfig.DataServerPort),
+						"--endpoint", minioEndpoint,
+						"--accesskey", minioAccessKey,
+						"--secretkey", minioSecretKey,
+						"--filename", info.FileName,
 					},
 					Ports: []corev1.ContainerPort{
 						{
@@ -76,6 +77,10 @@ func CreateSparkPod(clientset *kubernetes.Clientset, podName string, jdbcUrl str
 			},
 			Volumes:       []corev1.Volume{},
 			RestartPolicy: corev1.RestartPolicyNever,
+			DNSPolicy:     corev1.DNSClusterFirst,
+			DNSConfig: &corev1.PodDNSConfig{
+				Searches: []string{},
+			},
 		},
 	}
 
