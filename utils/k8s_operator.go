@@ -52,6 +52,8 @@ func CreateSparkPod(clientset *kubernetes.Clientset, podName string, info *pb.Sp
 						"--conf", fmt.Sprintf("spark.kubernetes.namespace=%s", conf.SparkPodConfig.Namespace),
 						"--conf", fmt.Sprintf("spark.kubernetes.driver.container.image=%s", imageFullName),
 						"--conf", fmt.Sprintf("spark.kubernetes.executor.container.image=%s", imageFullName),
+						"--conf", fmt.Sprintf("spark.kubernetes.authenticate.driver.serviceAccountName=%s", conf.SparkPodConfig.AccountName), // Driver的ServiceAccount
+						"--conf", fmt.Sprintf("spark.kubernetes.authenticate.executor.serviceAccountName=%s", conf.SparkPodConfig.AccountName), // Executor的ServiceAccount
 						"local:///opt/spark/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar",
 						"--dbtype", info.DbType,
 						"--host", info.Host,

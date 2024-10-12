@@ -56,12 +56,13 @@ func GetDatasourceByAssetName(requestId string, assetName string, chainId int32,
 		return nil, fmt.Errorf("connection response data is nil")
 	}
 	connInfo := &pb2.ConnectionInfo{
-		Host:     connResponse.GetData().Host,
-		Port:     connResponse.GetData().Port,
-		User:     connResponse.GetData().Username,
-		DbName:   connResponse.GetData().DbName,
-		Password: connResponse.GetData().Password,
-		Dbtype:   connResponse.GetData().Type,
+		Host:      connResponse.GetData().Host,
+		Port:      connResponse.GetData().Port,
+		User:      connResponse.GetData().Username,
+		DbName:    connResponse.GetData().DbName,
+		Password:  connResponse.GetData().Password,
+		Dbtype:    connResponse.GetData().Type,
+		TableName: productDataSet.TableName,
 	}
 	return connInfo, nil
 }
