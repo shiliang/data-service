@@ -128,3 +128,14 @@ func BuildSelectQuery(request *pb2.BatchReadRequest, tableName string) string {
 	query := fmt.Sprintf("SELECT %s FROM %s;", fields, tableName)
 	return query
 }
+
+func BuildQuery(tableName string, fields []string) string {
+	columns := "*"
+	if len(fields) > 0 {
+		columns = fmt.Sprintf(`"%s"`, fields[0])
+		for _, field := range fields[1:] {
+			columns += fmt.Sprintf(`, "%s"`, field)
+		}
+	}
+	return fmt.Sprintf("SELECT %s FROM %s", columns, tableName)
+}

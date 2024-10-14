@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/apache/arrow/go/v15/arrow"
+	"github.com/apache/arrow/go/v15/arrow/array"
 	"github.com/apache/arrow/go/v15/arrow/ipc"
 	"github.com/apache/arrow/go/v15/arrow/memory"
 	"github.com/minio/minio-go/v7"
@@ -74,16 +75,76 @@ func (s Server) WriteInternalData(g grpc.ClientStreamingServer[pb.WriterInternal
 	}
 }
 
+func (s Server) ReadInternalData(request *pb.InternalReadRequest, g grpc.ServerStreamingServer[pb.ArrowResponse]) error {
+	conf := config.GetConfigMap()
+	dbType := utils.ConvertDBType(conf.Dbms.Type)
+	connInfo := &pb.ConnectionInfo{Host: conf.Dbms.Host,
+		Port:     conf.Dbms.Port,
+		User:     conf.Dbms.User,
+		DbName:   conf.Dbms.Database,
+		Password: conf.Dbms.Password,
+	}
+	// 连接数据库
+	dbStrategy, _ := database.DatabaseFactory(dbType, connInfo)
+	if err := dbStrategy.ConnectToDBWithPass(connInfo); err != nil {
+		return fmt.Errorf("failed to connect to database: %v", err)
+	}
+	db := database.GetDB(dbStrategy)
+	// 构建查询语句
+	query := utils.BuildQuery(request.TableName, request.DbFields)
+	rows, err := db.Query(query)
+	if err != nil {
+		return fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer rows.Close()
+
+	// 获取列名
+	columns, err := rows.Columns()
+	if err != nil {
+		return fmt.Errorf("failed to get columns: %w", err)
+	}
+
+	// 使用 Arrow memory pool 创建批量数据容器
+	pool := memory.NewGoAllocator()
+	builder := createArrowBuilder(pool, len(columns))
+
+	// 遍历查询结果，将每行数据添加到 Arrow 批次中
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		appendArrowRecord(builder, values)
+	}
+
+	// 完成构建 Arrow 批次
+	record := builder.NewRecord()
+	defer record.Release()
+
+	// 将 Arrow 批次编码为 IPC 格式并通过流发送
+	if err := sendArrowBatch(g, record); err != nil {
+		return fmt.Errorf("failed to send Arrow batch: %w", err)
+	}
+
+	return nil
+
+}
+
 func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerStreamingServer[pb.ArrowResponse]) error {
 	// 解析客户端请求参数
 	// 获取要连接的数据库信息
 	connInfo, err := utils.GetDatasourceByAssetName(request.GetRequestId(), request.AssetName,
 		request.ChainInfoId, request.PlatformId)
-
 	dbType := utils.ConvertDataSourceType(connInfo.Dbtype)
 	// 从数据源中读取arrow数据流
 	dbStrategy, _ := database.DatabaseFactory(dbType, connInfo)
-	if err := dbStrategy.ConnectToDB(); err != nil {
+	if err := dbStrategy.ConnectToDBWithPass(connInfo); err != nil {
 		return fmt.Errorf("failed to connect to database: %v", err)
 	}
 	// 拼接sql，执行数据库查询
@@ -262,6 +323,46 @@ func (s Server) WriteOSSData(ctx context.Context, request *pb.OSSWriteRequest) (
 		Message: fmt.Sprintf("File uploaded to MinIO successfully: %s (size: %d bytes)", uploadInfo.Key, uploadInfo.Size),
 	}, nil
 
+}
+
+// createArrowBuilder 创建 Arrow RecordBuilder
+func createArrowBuilder(pool memory.Allocator, numColumns int) *array.RecordBuilder {
+	schemaFields := make([]arrow.Field, numColumns)
+	for i := range schemaFields {
+		schemaFields[i] = arrow.Field{Name: fmt.Sprintf("col%d", i), Type: arrow.PrimitiveTypes.Int64} // 假设所有字段为 Int64
+	}
+	schema := arrow.NewSchema(schemaFields, nil)
+	return array.NewRecordBuilder(pool, schema)
+}
+
+// appendArrowRecord 将一行数据添加到 Arrow RecordBuilder 中
+func appendArrowRecord(builder *array.RecordBuilder, values []interface{}) {
+	for i, v := range values {
+		builder.Field(i).(*array.Int64Builder).Append(v.(int64)) // 假设数据为 Int64 类型
+	}
+}
+
+// sendArrowBatch 将 Arrow 批次编码为 IPC 格式并通过 gRPC 流发送
+func sendArrowBatch(stream pb.DataSourceService_ReadInternalDataServer, record arrow.Record) error {
+	// 使用 bytes.Buffer 来存储 Arrow 批次的序列化数据
+	var buf bytes.Buffer
+
+	// 创建 IPC Writer，将数据写入 bytes.Buffer
+	writer := ipc.NewWriter(&buf)
+	defer writer.Close()
+
+	// 将 Arrow Record 写入 IPC 格式
+	if err := writer.Write(record); err != nil {
+		return fmt.Errorf("failed to write Arrow batch: %w", err)
+	}
+
+	// 将序列化后的数据打包成 gRPC 响应
+	response := &pb.ArrowResponse{ArrowBatch: buf.Bytes()}
+	if err := stream.Send(response); err != nil {
+		return fmt.Errorf("failed to send response: %w", err)
+	}
+
+	return nil
 }
 
 // 使用事务批量插入Arrow数据到数据库

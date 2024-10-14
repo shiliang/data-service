@@ -185,6 +185,19 @@ func (sdk *DataServiceClient) ReadStream(ctx context.Context, request *pb.Stream
 	return stream, nil
 }
 
+func (sdk *DataServiceClient) ReadInternalDataStream(ctx context.Context, request *pb.InternalReadRequest) (pb.DataSourceService_ReadInternalDataClient, error) {
+	// 使用提供的请求调用 ReadInternalData 方法
+	stream, err := sdk.client.ReadInternalData(ctx, request)
+	if err != nil {
+		// 如果读取数据失败，记录日志并返回错误
+		sdk.logger.Warnw("Failed to read internal data", "error", err)
+		return nil, fmt.Errorf("error calling ReadInternalData: %w", err)
+	}
+
+	// 返回成功的数据流
+	return stream, nil
+}
+
 // 关闭gRPC连接
 func (client *DataServiceClient) Close() error {
 	if err := client.conn.Close(); err != nil {

@@ -24,6 +24,7 @@ const (
 	DataSourceService_SendArrowData_FullMethodName     = "/datasource.DataSourceService/SendArrowData"
 	DataSourceService_WriteOSSData_FullMethodName      = "/datasource.DataSourceService/WriteOSSData"
 	DataSourceService_WriteInternalData_FullMethodName = "/datasource.DataSourceService/WriteInternalData"
+	DataSourceService_ReadInternalData_FullMethodName  = "/datasource.DataSourceService/ReadInternalData"
 )
 
 // DataSourceServiceClient is the client API for DataSourceService service.
@@ -42,6 +43,8 @@ type DataSourceServiceClient interface {
 	WriteOSSData(ctx context.Context, in *OSSWriteRequest, opts ...grpc.CallOption) (*Response, error)
 	// 往内置数据库写入数据
 	WriteInternalData(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WriterInternalDataRequest, Response], error)
+	// 从内置数据库读取数据
+	ReadInternalData(ctx context.Context, in *InternalReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArrowResponse], error)
 }
 
 type dataSourceServiceClient struct {
@@ -117,6 +120,25 @@ func (c *dataSourceServiceClient) WriteInternalData(ctx context.Context, opts ..
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type DataSourceService_WriteInternalDataClient = grpc.ClientStreamingClient[WriterInternalDataRequest, Response]
 
+func (c *dataSourceServiceClient) ReadInternalData(ctx context.Context, in *InternalReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArrowResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &DataSourceService_ServiceDesc.Streams[3], DataSourceService_ReadInternalData_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[InternalReadRequest, ArrowResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataSourceService_ReadInternalDataClient = grpc.ServerStreamingClient[ArrowResponse]
+
 // DataSourceServiceServer is the server API for DataSourceService service.
 // All implementations must embed UnimplementedDataSourceServiceServer
 // for forward compatibility.
@@ -133,6 +155,8 @@ type DataSourceServiceServer interface {
 	WriteOSSData(context.Context, *OSSWriteRequest) (*Response, error)
 	// 往内置数据库写入数据
 	WriteInternalData(grpc.ClientStreamingServer[WriterInternalDataRequest, Response]) error
+	// 从内置数据库读取数据
+	ReadInternalData(*InternalReadRequest, grpc.ServerStreamingServer[ArrowResponse]) error
 	mustEmbedUnimplementedDataSourceServiceServer()
 }
 
@@ -157,6 +181,9 @@ func (UnimplementedDataSourceServiceServer) WriteOSSData(context.Context, *OSSWr
 }
 func (UnimplementedDataSourceServiceServer) WriteInternalData(grpc.ClientStreamingServer[WriterInternalDataRequest, Response]) error {
 	return status.Errorf(codes.Unimplemented, "method WriteInternalData not implemented")
+}
+func (UnimplementedDataSourceServiceServer) ReadInternalData(*InternalReadRequest, grpc.ServerStreamingServer[ArrowResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ReadInternalData not implemented")
 }
 func (UnimplementedDataSourceServiceServer) mustEmbedUnimplementedDataSourceServiceServer() {}
 func (UnimplementedDataSourceServiceServer) testEmbeddedByValue()                           {}
@@ -240,6 +267,17 @@ func _DataSourceService_WriteInternalData_Handler(srv interface{}, stream grpc.S
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type DataSourceService_WriteInternalDataServer = grpc.ClientStreamingServer[WriterInternalDataRequest, Response]
 
+func _DataSourceService_ReadInternalData_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(InternalReadRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(DataSourceServiceServer).ReadInternalData(m, &grpc.GenericServerStream[InternalReadRequest, ArrowResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataSourceService_ReadInternalDataServer = grpc.ServerStreamingServer[ArrowResponse]
+
 // DataSourceService_ServiceDesc is the grpc.ServiceDesc for DataSourceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -271,6 +309,11 @@ var DataSourceService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "WriteInternalData",
 			Handler:       _DataSourceService_WriteInternalData_Handler,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "ReadInternalData",
+			Handler:       _DataSourceService_ReadInternalData_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "data_source.proto",

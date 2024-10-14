@@ -48,13 +48,15 @@ func CreateSparkPod(clientset *kubernetes.Clientset, podName string, info *pb.Sp
 						"--class", conf.SparkPodConfig.Class,
 						"--master", conf.SparkPodConfig.Master,
 						"--deploy-mode", "cluster",
+						"--conf", "spark.executorEnv.PYSPARK_PYTHON=/usr/bin/python3",
 						"--conf", fmt.Sprintf("spark.executor.instances=2"),
 						"--conf", fmt.Sprintf("spark.kubernetes.namespace=%s", conf.SparkPodConfig.Namespace),
 						"--conf", fmt.Sprintf("spark.kubernetes.driver.container.image=%s", imageFullName),
 						"--conf", fmt.Sprintf("spark.kubernetes.executor.container.image=%s", imageFullName),
 						"--conf", fmt.Sprintf("spark.kubernetes.authenticate.driver.serviceAccountName=%s", conf.SparkPodConfig.AccountName), // Driver的ServiceAccount
 						"--conf", fmt.Sprintf("spark.kubernetes.authenticate.executor.serviceAccountName=%s", conf.SparkPodConfig.AccountName), // Executor的ServiceAccount
-						"local:///opt/spark/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar",
+						"--conf", "spark.kubernetes.file.upload.path=file:///tmp/",
+						"file:///opt/spark/jars/src/main.py",
 						"--dbtype", info.DbType,
 						"--host", info.Host,
 						"--port", fmt.Sprintf("%d", info.Port),

@@ -17,6 +17,7 @@ service DataSourceService {
   // 往内置数据库写入数据
   rpc WriteInternalData(stream WriterInternalDataRequest) returns (Response);
   // 从内置数据库读取数据
+  rpc ReadInternalData(InternalReadRequest) returns (stream ArrowResponse);
 }
 
 
@@ -50,6 +51,11 @@ message WriterInternalDataRequest {
   bytes arrow_batch = 1;
   string dbName = 2;
   string tableName = 3;
+}
+
+message InternalReadRequest {
+  string tableName = 1;
+  repeated string dbFields = 2;
 }
 
 // 批处理请求，包含查询条件或读取参数
