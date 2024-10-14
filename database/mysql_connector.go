@@ -21,6 +21,7 @@ import (
 	"github.com/shiliang/data-service/common"
 	ds "github.com/shiliang/data-service/generated/datasource"
 	"go.uber.org/zap"
+	"time"
 )
 
 type MySQLStrategy struct {
@@ -144,6 +145,7 @@ func (m *MySQLStrategy) GetJdbcUrl() string {
 	return jdbcUrl
 }
 
+// 从数据库游标中按行读取数据，并构建当前批次的 Arrow Record
 func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
 	if rows == nil {
 		return nil, fmt.Errorf("no rows to convert")
@@ -191,19 +193,39 @@ func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
 		if err := rows.Scan(valuePtrs...); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %v", err)
 		}
-
 		// 将值添加到 Arrow Builder 中
 		for i, val := range values {
-			switch builder.Field(i).(type) {
+			switch b := builder.Field(i).(type) {
 			case *array.StringBuilder:
-				strValue := fmt.Sprintf("%v", val)
-				builder.Field(i).(*array.StringBuilder).Append(strValue)
-			case *array.Int64Builder:
-				intValue, ok := val.(int64)
-				if ok {
-					builder.Field(i).(*array.Int64Builder).Append(intValue)
+				if val == nil {
+					b.AppendNull()
+				} else {
+					b.Append(fmt.Sprintf("%v", val))
 				}
-				// 其他类型转换根据实际需求处理
+			case *array.Int64Builder:
+				if val == nil {
+					b.AppendNull()
+				} else if intValue, ok := val.(int64); ok {
+					b.Append(intValue)
+				} else {
+					b.AppendNull()
+				}
+			case *array.Time32Builder:
+				// 处理时间数据 (精度：秒)
+				if timeVal, ok := val.(time.Time); ok {
+					b.Append(arrow.Time32(timeVal.Unix()))
+				} else {
+					b.AppendNull()
+				}
+			case *array.TimestampBuilder:
+				// 处理 TIME 或 DATETIME 类型的数据 (精度：纳秒)
+				if timeVal, ok := val.(time.Time); ok {
+					b.Append(arrow.Timestamp(timeVal.UnixNano()))
+				} else {
+					b.AppendNull()
+				}
+			default:
+				return nil, fmt.Errorf("unsupported builder type: %T", b)
 			}
 		}
 	}
@@ -222,6 +244,11 @@ func sqlTypeToArrowType(colType *sql.ColumnType) (arrow.DataType, error) {
 		return arrow.PrimitiveTypes.Int64, nil
 	case "FLOAT", "DOUBLE", "DECIMAL":
 		return arrow.PrimitiveTypes.Float64, nil
+	case "TIME":
+		return arrow.FixedWidthTypes.Time32s, nil
+	case "YEAR":
+		// YEAR 类型通常可以用 Int64 来表示
+		return arrow.PrimitiveTypes.Int64, nil
 	// 处理其他类型
 	default:
 		return nil, fmt.Errorf("unsupported column type: %s", colType.DatabaseTypeName())
