@@ -27,7 +27,7 @@ type KingbaseStrategy struct {
 	logger *zap.SugaredLogger
 }
 
-func (k *KingbaseStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
+func (k *KingbaseStrategy) RowsToArrowBatch(rows *sql.Rows, batchSize int) (arrow.Record, error) {
 	//TODO implement me
 	panic("implement me")
 }

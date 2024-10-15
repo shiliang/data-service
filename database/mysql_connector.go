@@ -146,7 +146,7 @@ func (m *MySQLStrategy) GetJdbcUrl() string {
 }
 
 // 从数据库游标中按行读取数据，并构建当前批次的 Arrow Record
-func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
+func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows, batchSize int) (arrow.Record, error) {
 	if rows == nil {
 		return nil, fmt.Errorf("no rows to convert")
 	}
@@ -187,7 +187,7 @@ func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
 	for i := range valuePtrs {
 		valuePtrs[i] = &values[i]
 	}
-
+	rowCount := 0
 	// 遍历 rows 并填充 Arrow Builder
 	for rows.Next() {
 		if err := rows.Scan(valuePtrs...); err != nil {
@@ -197,10 +197,13 @@ func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
 		for i, val := range values {
 			switch b := builder.Field(i).(type) {
 			case *array.StringBuilder:
+				// 检查是否为 []byte 类型，并转换为字符串
 				if val == nil {
 					b.AppendNull()
+				} else if byteVal, ok := val.([]byte); ok {
+					b.Append(string(byteVal)) // 转换为字符串
 				} else {
-					b.Append(fmt.Sprintf("%v", val))
+					b.Append(fmt.Sprintf("%v", val)) // 其他类型格式化为字符串
 				}
 			case *array.Int64Builder:
 				if val == nil {
@@ -211,9 +214,16 @@ func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
 					b.AppendNull()
 				}
 			case *array.Time32Builder:
-				// 处理时间数据 (精度：秒)
-				if timeVal, ok := val.(time.Time); ok {
-					b.Append(arrow.Time32(timeVal.Unix()))
+				// 处理 TIME 类型数据（格式如 16:38:06）
+				if val == nil {
+					b.AppendNull()
+				} else if strVal, ok := val.(string); ok {
+					parsedTime, err := time.Parse("15:04:05", strVal)
+					if err == nil {
+						b.Append(arrow.Time32(parsedTime.Hour()*3600 + parsedTime.Minute()*60 + parsedTime.Second()))
+					} else {
+						b.AppendNull()
+					}
 				} else {
 					b.AppendNull()
 				}
@@ -227,6 +237,10 @@ func (m *MySQLStrategy) RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error) {
 			default:
 				return nil, fmt.Errorf("unsupported builder type: %T", b)
 			}
+		}
+		rowCount++
+		if rowCount >= batchSize {
+			break // 达到批次大小，结束循环，发送给客户端
 		}
 	}
 

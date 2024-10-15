@@ -33,5 +33,5 @@ type DatabaseStrategy interface {
 
 	GetJdbcUrl() string
 
-	RowsToArrowBatch(rows *sql.Rows) (arrow.Record, error)
+	RowsToArrowBatch(rows *sql.Rows, batchSize int) (arrow.Record, error)
 }

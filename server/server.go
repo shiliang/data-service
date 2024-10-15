@@ -156,7 +156,7 @@ func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerSt
 	// 返回arrow流
 	for {
 		// 读取 Arrow 批次
-		record, err := dbStrategy.RowsToArrowBatch(rows)
+		record, err := dbStrategy.RowsToArrowBatch(rows, common.STREAM_DATA_SIZE)
 		if err == io.EOF {
 			break // 没有更多数据
 		}

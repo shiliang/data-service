@@ -16,5 +16,6 @@ const (
 	MYSQL_TLS_CONFIG    = "mysql-tls"
 	KINGBASE_TLS_CONFIG = "kingbase-tls"
 
-	BATCH_DATA_SIZE = 1000
+	BATCH_DATA_SIZE  = 1000
+	STREAM_DATA_SIZE = 100
 )
