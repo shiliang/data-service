@@ -27,7 +27,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 )
 
 type Server struct {
@@ -145,10 +144,10 @@ func (s Server) ReadStreamingData(request *pb.StreamReadRequest, g grpc.ServerSt
 	// 从数据源中读取arrow数据流
 	dbStrategy, _ := database.DatabaseFactory(dbType, connInfo)
 	if err := dbStrategy.ConnectToDBWithPass(connInfo); err != nil {
-		return fmt.Errorf("failed to connect to database: %v", err)
+		return fmt.Errorf("faild to connect to database: %v", err)
 	}
-	// 拼接sql，执行数据库查询
-	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(request.DbFields, ","), connInfo.TableName)
+
+	query := utils.BuildQuery(connInfo.TableName, request.DbFields)
 	rows, err := dbStrategy.Query(query)
 	if err != nil {
 		return fmt.Errorf("error executing query: %v", err)

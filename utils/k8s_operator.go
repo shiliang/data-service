@@ -45,10 +45,8 @@ func CreateSparkPod(clientset *kubernetes.Clientset, podName string, info *pb.Sp
 					Image: imageFullName, // 替换为实际的 Spark 镜像
 					Args: []string{
 						"/opt/spark/bin/spark-submit",
-						"--class", conf.SparkPodConfig.Class,
 						"--master", conf.SparkPodConfig.Master,
 						"--deploy-mode", "cluster",
-						"--jars", "/opt/spark/jars/mysql-connector-j-8.0.33.jar",
 						"--conf", "spark.executorEnv.PYSPARK_PYTHON=/usr/bin/python3",
 						"--conf", fmt.Sprintf("spark.executor.instances=2"),
 						"--conf", fmt.Sprintf("spark.kubernetes.namespace=%s", conf.SparkPodConfig.Namespace),
@@ -56,7 +54,7 @@ func CreateSparkPod(clientset *kubernetes.Clientset, podName string, info *pb.Sp
 						"--conf", fmt.Sprintf("spark.kubernetes.executor.container.image=%s", imageFullName),
 						"--conf", fmt.Sprintf("spark.kubernetes.authenticate.driver.serviceAccountName=%s", conf.SparkPodConfig.AccountName), // Driver的ServiceAccount
 						"--conf", fmt.Sprintf("spark.kubernetes.authenticate.executor.serviceAccountName=%s", conf.SparkPodConfig.AccountName), // Executor的ServiceAccount
-						"local:///opt/spark/jars/spark-job.zip",
+						"/opt/spark/jars/spark-job.zip/__main__.py",
 						"--dbtype", info.DbType,
 						"--host", info.Host,
 						"--port", fmt.Sprintf("%d", info.Port),
