@@ -1,11 +1,11 @@
 package utils
 
 import (
+	pb "data-service/generated/datasource"
 	"errors"
 	"fmt"
 	"github.com/apache/arrow/go/v15/arrow"
 	"github.com/apache/arrow/go/v15/arrow/array"
-	pb "github.com/shiliang/data-service/generated/datasource"
 	"strings"
 )
 

@@ -10,9 +10,9 @@
 package database
 
 import (
+	pb "data-service/generated/datasource"
 	"database/sql"
 	"github.com/apache/arrow/go/v15/arrow"
-	pb "github.com/shiliang/data-service/generated/datasource"
 )
 
 type DatabaseStrategy interface {

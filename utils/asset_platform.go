@@ -11,9 +11,9 @@ package utils
 
 import (
 	"context"
+	pb2 "data-service/generated/datasource"
+	pb "data-service/generated/ida"
 	"fmt"
-	pb2 "github.com/shiliang/data-service/generated/datasource"
-	pb "github.com/shiliang/data-service/generated/ida"
 	"google.golang.org/grpc"
 	"log"
 	"os"

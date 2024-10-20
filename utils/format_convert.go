@@ -11,10 +11,10 @@ package utils
 
 import (
 	"bytes"
+	pb "data-service/generated/datasource"
 	"fmt"
 	"github.com/apache/arrow/go/arrow/csv"
 	"github.com/apache/arrow/go/arrow/ipc"
-	pb "github.com/shiliang/data-service/generated/datasource"
 	"go.uber.org/zap"
 	"io"
 	"os"

@@ -53,7 +53,6 @@ RUN apt-get update && apt-get install -y \
 # 从builder阶段复制二进制文件和调试工具到最终镜像
 COPY --from=builder /home/workspace/dataserver /home/workspace/bin/
 COPY --from=builder /root/go/bin/dlv /usr/local/bin/
-COPY --from=builder /home/workspace/jars/spark-scala-app-1.0-SNAPSHOT-jar-with-dependencies.jar /home/workspace/jars/
 COPY --from=builder /home/workspace/start.sh /home/workspace/bin/
 
 # 授予start.sh可执行权限

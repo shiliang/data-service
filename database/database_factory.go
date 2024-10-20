@@ -10,9 +10,9 @@
 package database
 
 import (
+	pb "data-service/generated/datasource"
 	"database/sql"
 	"errors"
-	pb "github.com/shiliang/data-service/generated/datasource"
 )
 
 // DatabaseFactory creates a database strategy based on the database type

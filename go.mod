@@ -1,4 +1,4 @@
-module github.com/shiliang/data-service
+module data-service
 
 go 1.23.0
 

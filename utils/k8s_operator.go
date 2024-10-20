@@ -11,11 +11,11 @@ package utils
 
 import (
 	"context"
+	"data-service/config"
+	pb "data-service/generated/datasource"
+	log "data-service/log"
 	"fmt"
 	"github.com/google/uuid"
-	"github.com/shiliang/data-service/config"
-	pb "github.com/shiliang/data-service/generated/datasource"
-	log "github.com/shiliang/data-service/log"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
