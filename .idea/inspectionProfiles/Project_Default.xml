@@ -1,0 +1,14 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="GoDfaErrorMayBeNotNil" enabled="true" level="WARNING" enabled_by_default="true">
+      <functions>
+        <function importPath="data-service/database" name="DatabaseFactory" />
+        <function importPath="github.com/shiliang/data-service/utils" name="GetDatasourceByAssetName" />
+      </functions>
+      <methods>
+        <method importPath="data-service/generated/datasource" receiver="DataSourceServiceClient" name="ReadBatchData" />
+      </methods>
+    </inspection_tool>
+  </profile>
+</component>
